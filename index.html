@@ -3,23 +3,26 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#17324d">
-<title>安順國中｜Azure 一鍵語音輸入 V1.3.26</title>
+<title>安順國中｜Azure 一鍵語音輸入 V1.3.27</title>
 <style>
 :root{--navy:#17324d;--blue:#245b86;--line:#dbe3ea;--bg:#f3f6f9;--green:#16734a;--red:#b42318;--muted:#64748b}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2937;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;line-height:1.55}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;background:var(--bg);color:#1f2937;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;line-height:1.55}
 .wrap{max-width:500px;margin:18px auto;padding:0 12px}.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 8px 28px rgba(22,42,60,.08)}
+.preparing{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted);gap:14px}.spinner{width:38px;height:38px;border:4px solid #dce7ef;border-top-color:var(--blue);border-radius:50%;animation:spin .85s linear infinite}.preparing strong{font-size:17px;color:var(--navy)}.preparing span{font-size:13px}@keyframes spin{to{transform:rotate(360deg)}}
 .brand{font-size:12px;letter-spacing:.12em;color:#71849a;font-weight:800}.title{font-size:24px;color:var(--navy);margin:5px 0 4px}.desc{color:var(--muted);margin:0 0 22px}.state{border-radius:14px;background:#eef4f8;padding:18px 14px;text-align:center;margin:14px 0}.mic{font-size:40px;line-height:1.3}.stateText{font-weight:800;color:var(--navy);font-size:18px;margin-top:5px}.status{font-size:13px;color:var(--muted);min-height:22px;margin:10px 0}.status.ok{color:var(--green)}.status.err{color:var(--red)}.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;color:var(--navy);cursor:pointer}.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}.actions{display:flex;gap:8px;justify-content:center}.hint{background:#edf3f8;color:#53677b;padding:11px;border-radius:10px;font-size:12px;margin-top:14px}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@1.53.0/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
 </head>
-<body><main class="wrap"><section class="card">
+<body><main class="wrap">
+<div class="preparing" id="preparing" role="status" aria-live="polite"><div class="spinner" aria-hidden="true"></div><strong id="preparingText">正在準備語音輸入，請稍候…</strong><span>完成連線及麥克風啟動後，才會顯示「可以開始說話」。</span></div>
+<section class="card" id="voiceCard" hidden>
 <div class="brand">ANSHUN JUNIOR HIGH SCHOOL</div>
 <h1 class="title">🎤 安順國中語音輸入</h1>
 <p class="desc" id="desc">準備自動辨識繁體中文。</p>
 <div class="state" id="connectionState" hidden><div class="mic" id="mic">🎙️</div><div class="stateText" id="stateText">已連線，可以開始說話</div></div>
 <div class="status" id="status" aria-live="polite" hidden></div>
 <div class="actions"><button id="retryBtn" class="btn primary" hidden>重新辨識</button><button id="cancelBtn" class="btn" type="button">取消／關閉</button></div>
-<div class="hint">本頁使用 Microsoft Azure AI Speech（繁體中文臺灣 zh-TW）。辨識完成後會自動回填姓名；簽到頁會依正式名冊自動帶入所屬單位。請在安靜環境只說出姓名，例如「黃偉哲」。</div>
+<div class="hint">本頁使用 Microsoft Azure AI Speech（繁體中文臺灣 zh-TW）。出現「已就緒，可以開始說話」後再說出姓名；辨識完成會自動回填，所屬單位由正式名冊帶入。</div>
 </section></main>
 <script>
 (() => {
@@ -38,20 +41,38 @@ let started = false;
 let finished = false;
 let lastInit = null;
 let authWaitTimer = null;
+let startupTimer = null;
+let listeningTimer = null;
+let starting = false;
+let resultPending = false;
+let startAttempt = 0;
 $('desc').textContent = field === 'both'
   ? '請只說出姓名，例如「黃偉哲」。自然停頓後會自動送回簽到頁，由正式名冊帶入所屬單位。'
   : '本次辨識欄位：' + label + '。說完並自然停頓後，文字會自動送回簽到頁。';
 
-function revealConnectionUI() { $('connectionState').hidden = false; }
+function revealConnectionUI() { $('preparing').hidden = true; $('voiceCard').hidden = false; $('connectionState').hidden = false; }
+function showPreparing(message='正在準備語音輸入，請稍候…') { $('voiceCard').hidden = true; $('preparing').hidden = false; $('preparingText').textContent = message; }
 function status(text, kind='') { $('status').hidden = false; $('status').textContent = text; $('status').className = 'status' + (kind ? ' ' + kind : ''); }
 function showRetry() { revealConnectionUI(); $('retryBtn').hidden = false; $('stateText').textContent = '辨識未完成'; $('mic').textContent = '⚠️'; }
+function clearStartupTimers() {
+  if (startupTimer) { clearTimeout(startupTimer); startupTimer = null; }
+  if (listeningTimer) { clearTimeout(listeningTimer); listeningTimer = null; }
+}
+function showReady() {
+  clearStartupTimers();
+  revealConnectionUI();
+  $('retryBtn').hidden = true;
+  $('mic').textContent = '🎙️';
+  $('stateText').textContent = '已就緒，可以開始說話';
+  status('語音辨識已啟動，現在請只說出姓名。', 'ok');
+}
 function clearAuthWaitTimer() { if (authWaitTimer) { clearTimeout(authWaitTimer); authWaitTimer = null; } }
 function armAuthWaitTimer() {
   clearAuthWaitTimer();
   authWaitTimer = setTimeout(() => {
     if (!started && !finished) {
-      status('等待簽到頁更新語音授權超過 25 秒。請按「重新辨識」；若仍無法取得，請關閉此視窗並從簽到頁重新開啟。', 'err');
       revealConnectionUI();
+      status('等待簽到頁更新語音授權超過 25 秒。請按「重新辨識」；若仍無法取得，請關閉此視窗並從簽到頁重新開啟。', 'err');
       $('stateText').textContent = '授權等待逾時';
       $('mic').textContent = '⚠️';
       $('retryBtn').hidden = false;
@@ -59,9 +80,11 @@ function armAuthWaitTimer() {
   }, 25000);
 }
 function disposeRecognizer() {
+  clearStartupTimers();
+  startAttempt++;
   try { if (recognizer) recognizer.close(); } catch (e) {}
   try { if (audioConfig) audioConfig.close(); } catch (e) {}
-  recognizer = null; audioConfig = null; started = false;
+  recognizer = null; audioConfig = null; started = false; starting = false; resultPending = false;
 }
 function sendToParent(text, candidates=[]) {
   if (!window.opener || window.opener.closed || !nonce || !parentOrigin) {
@@ -87,21 +110,25 @@ function sendError(message) {
   disposeRecognizer();
 }
 function startAzureRecognition(init) {
-  if (started || finished) return;
+  if (starting || started || finished) return;
   if (!window.SpeechSDK) { sendError('Azure Speech SDK 載入失敗，請檢查網路後重試。'); return; }
   if (!init || !init.token || !init.region) { sendError('沒有取得 Azure 短效授權，請回到簽到頁重新開啟。'); return; }
-  started = true;
-  revealConnectionUI();
-  $('retryBtn').hidden = true;
-  $('mic').textContent = '🎙️';
-  $('stateText').textContent = '已連線，可以開始說話';
-  status(field === 'both' ? '已取得簽到頁授權，請只說出姓名；若詢問麥克風權限，請選「允許」。' : '已取得簽到頁授權，請只說出姓名；若詢問麥克風權限，請選「允許」。');
+
+  starting = true;
+  resultPending = false;
+  showPreparing('正在連線並啟動麥克風，請稍候…');
+  const attempt = ++startAttempt;
+  startupTimer = setTimeout(() => {
+    if (attempt === startAttempt && starting && !finished) {
+      sendError('語音服務或麥克風啟動超過 20 秒。請確認麥克風權限後按「重新辨識」。');
+    }
+  }, 20000);
+
   try {
     const sdk = window.SpeechSDK;
     const speechConfig = sdk.SpeechConfig.fromAuthorizationToken(init.token, init.region);
     speechConfig.speechRecognitionLanguage = 'zh-TW';
     speechConfig.outputFormat = sdk.OutputFormat.Detailed;
-    // 讓短句在自然停頓後較快結束；此值仍需依實際裝置及環境測試。
     speechConfig.setProperty(sdk.PropertyId.Speech_SegmentationSilenceTimeoutMs, '1200');
     audioConfig = sdk.AudioConfig.fromDefaultMicrophoneInput();
     recognizer = new sdk.SpeechRecognizer(speechConfig, audioConfig);
@@ -113,36 +140,68 @@ function startAzureRecognition(init) {
     phraseList.setWeight(1.1);
 
     recognizer.speechStartDetected = () => {
+      if (finished || resultPending) return;
       $('stateText').textContent = '正在辨識' + label + '…';
       status('已聽到語音，請說完後自然停頓。');
     };
     recognizer.recognizing = (_, e) => {
-      if (e && e.result && e.result.text) status('辨識中：' + e.result.text);
+      if (!finished && e && e.result && e.result.text) status('辨識中：' + e.result.text);
     };
-    recognizer.recognizeOnceAsync(result => {
-      const text = result && result.text ? result.text.trim() : '';
-      if (result && result.reason === sdk.ResultReason.RecognizedSpeech && text) {
-        let candidates = [];
-        try {
-          const detail = result.json ? JSON.parse(result.json) : null;
-          candidates = detail && Array.isArray(detail.NBest)
-            ? detail.NBest.map(item => String(item.Display || item.ITN || item.Lexical || '').trim()).filter(Boolean)
-            : [];
-        } catch (e) {}
-        sendToParent(text, candidates);
+    recognizer.recognized = (_, e) => {
+      if (finished || resultPending || !e || !e.result) return;
+      if (e.result.reason !== sdk.ResultReason.RecognizedSpeech) return;
+      const text = String(e.result.text || '').trim();
+      if (!text) return;
+      resultPending = true;
+      clearStartupTimers();
+      let candidates = [];
+      try {
+        const detail = e.result.json ? JSON.parse(e.result.json) : null;
+        candidates = detail && Array.isArray(detail.NBest)
+          ? detail.NBest.map(item => String(item.Display || item.ITN || item.Lexical || '').trim()).filter(Boolean)
+          : [];
+      } catch (e) {}
+      const activeRecognizer = recognizer;
+      if (activeRecognizer && typeof activeRecognizer.stopContinuousRecognitionAsync === 'function') {
+        activeRecognizer.stopContinuousRecognitionAsync(
+          () => sendToParent(text, candidates),
+          () => sendToParent(text, candidates)
+        );
       } else {
-        let detail = '沒有辨識到清楚的語音，請再試一次。';
-        try {
-          const noMatch = sdk.NoMatchDetails.fromResult(result);
-          if (noMatch && noMatch.reason) detail += '（' + noMatch.reason + '）';
-        } catch (e) {}
-        sendError(detail);
+        sendToParent(text, candidates);
       }
+    };
+    recognizer.canceled = (_, e) => {
+      if (finished || resultPending) return;
+      let detail = '語音辨識連線中斷，請重新辨識。';
+      try {
+        const cancellation = sdk.CancellationDetails.fromResult(e.result);
+        if (cancellation && cancellation.errorDetails) detail = 'Azure 語音辨識失敗：' + cancellation.errorDetails;
+      } catch (ignore) {}
+      sendError(detail);
+    };
+
+    // 使用持續辨識的啟動回呼確認 Azure 與麥克風已真正啟動，成功後才顯示可說話畫面。
+    recognizer.startContinuousRecognitionAsync(() => {
+      if (attempt !== startAttempt || finished) return;
+      if (startupTimer) { clearTimeout(startupTimer); startupTimer = null; }
+      starting = false;
+      started = true;
+      showReady();
+      if (window.opener && !window.opener.closed && nonce && parentOrigin) {
+        window.opener.postMessage({type:'ANSHUN_VOICE_STARTED', nonce, field}, parentOrigin);
+      }
+      listeningTimer = setTimeout(() => {
+        if (started && !finished && !resultPending) {
+          sendError('已就緒但 60 秒內沒有收到語音。請按「重新辨識」再試一次。');
+        }
+      }, 60000);
     }, error => {
-      sendError('Azure 語音辨識失敗：' + String(error || '未知錯誤'));
+      if (attempt !== startAttempt || finished) return;
+      sendError('語音服務或麥克風啟動失敗：' + String(error || '未知錯誤') + '。請確認瀏覽器已允許麥克風。');
     });
   } catch (error) {
-    sendError('無法啟動 Azure 語音：' + (error && error.message ? error.message : String(error)));
+    if (attempt === startAttempt) sendError('無法啟動 Azure 語音：' + (error && error.message ? error.message : String(error)));
   }
 }
 
@@ -177,10 +236,8 @@ if (window.opener && !window.opener.closed && expectedParentOrigin) {
 }
 $('retryBtn').addEventListener('click', () => {
   if (!finished && window.opener && !window.opener.closed && nonce && parentOrigin) {
-    $('retryBtn').hidden = true;
-    $('stateText').textContent = '正在更新語音授權';
-    $('mic').textContent = '🔄';
-    status('正在向簽到頁更新短效授權，請稍候…');
+    disposeRecognizer();
+    showPreparing('正在重新取得授權並啟動麥克風，請稍候…');
     window.opener.postMessage({type:'ANSHUN_VOICE_RETRY_REQUEST', nonce}, parentOrigin);
     armAuthWaitTimer();
   }
