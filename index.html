@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- V1.3.28：修正教師人事系統以 parentOrigin=* 開啟本機 HTML 時，語音授權訊息被來源字串比對錯誤拒收；仍嚴格限制 event.source === window.opener。 -->
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -207,19 +208,24 @@ function startAzureRecognition(init) {
 
 window.addEventListener('message', event => {
   if (!window.opener || event.source !== window.opener) return;
-  if (!expectedParentOrigin || event.origin !== expectedParentOrigin) return;
+  // V1.3.28：教師人事系統可能以本機 HTML（opaque origin）開啟語音頁，
+  // 此時 opener 會以 parentOrigin=* 指示使用來源萬用模式。
+  // 安全性仍以 event.source 必須精確等於 window.opener 為前提；
+  // 若指定了明確來源，則仍嚴格比對 event.origin。
+  if (!expectedParentOrigin || (expectedParentOrigin !== '*' && event.origin !== expectedParentOrigin)) return;
+  const replyOrigin = expectedParentOrigin === '*' ? '*' : event.origin;
   const msg = event.data;
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'ANSHUN_VOICE_ERROR') {
     clearAuthWaitTimer();
-    if (msg.nonce && (!nonce || msg.nonce === nonce)) { nonce = String(msg.nonce); parentOrigin = event.origin; status(String(msg.message || '簽到頁無法取得 Azure 授權。'), 'err'); showRetry(); disposeRecognizer(); }
+    if (msg.nonce && (!nonce || msg.nonce === nonce)) { nonce = String(msg.nonce); parentOrigin = replyOrigin; status(String(msg.message || '簽到頁無法取得 Azure 授權。'), 'err'); showRetry(); disposeRecognizer(); }
     return;
   }
   if (msg.type !== 'ANSHUN_VOICE_INIT' || msg.field !== field || !msg.nonce || !msg.token || !msg.region) return;
   clearAuthWaitTimer();
   if (nonce && msg.nonce !== nonce) return;
   nonce = String(msg.nonce);
-  parentOrigin = event.origin;
+  parentOrigin = replyOrigin;
   lastInit = msg;
   startAzureRecognition(msg);
 });
