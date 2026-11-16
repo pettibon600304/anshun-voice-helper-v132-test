@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#17324d">
-<title>安順國中｜Azure 一鍵語音輸入</title>
+<title>安順國中｜Azure 一鍵語音輸入 V1.3.26</title>
 <style>
 :root{--navy:#17324d;--blue:#245b86;--line:#dbe3ea;--bg:#f3f6f9;--green:#16734a;--red:#b42318;--muted:#64748b}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2937;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;line-height:1.55}
@@ -37,6 +37,7 @@ let audioConfig = null;
 let started = false;
 let finished = false;
 let lastInit = null;
+let authWaitTimer = null;
 $('desc').textContent = field === 'both'
   ? '請只說出姓名，例如「黃偉哲」。自然停頓後會自動送回簽到頁，由正式名冊帶入所屬單位。'
   : '本次辨識欄位：' + label + '。說完並自然停頓後，文字會自動送回簽到頁。';
@@ -44,6 +45,19 @@ $('desc').textContent = field === 'both'
 function revealConnectionUI() { $('connectionState').hidden = false; }
 function status(text, kind='') { $('status').hidden = false; $('status').textContent = text; $('status').className = 'status' + (kind ? ' ' + kind : ''); }
 function showRetry() { revealConnectionUI(); $('retryBtn').hidden = false; $('stateText').textContent = '辨識未完成'; $('mic').textContent = '⚠️'; }
+function clearAuthWaitTimer() { if (authWaitTimer) { clearTimeout(authWaitTimer); authWaitTimer = null; } }
+function armAuthWaitTimer() {
+  clearAuthWaitTimer();
+  authWaitTimer = setTimeout(() => {
+    if (!started && !finished) {
+      status('等待簽到頁更新語音授權超過 25 秒。請按「重新辨識」；若仍無法取得，請關閉此視窗並從簽到頁重新開啟。', 'err');
+      revealConnectionUI();
+      $('stateText').textContent = '授權等待逾時';
+      $('mic').textContent = '⚠️';
+      $('retryBtn').hidden = false;
+    }
+  }, 25000);
+}
 function disposeRecognizer() {
   try { if (recognizer) recognizer.close(); } catch (e) {}
   try { if (audioConfig) audioConfig.close(); } catch (e) {}
@@ -63,6 +77,7 @@ function sendToParent(text, candidates=[]) {
   setTimeout(() => { try { window.close(); } catch (e) {} }, 900);
 }
 function sendError(message) {
+  clearAuthWaitTimer();
   const text = String(message || 'Azure 語音辨識失敗。');
   if (window.opener && !window.opener.closed && nonce && parentOrigin) {
     window.opener.postMessage({type:'ANSHUN_VOICE_STATUS', nonce, message:text, kind:'error'}, parentOrigin);
@@ -137,10 +152,12 @@ window.addEventListener('message', event => {
   const msg = event.data;
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'ANSHUN_VOICE_ERROR') {
+    clearAuthWaitTimer();
     if (msg.nonce && (!nonce || msg.nonce === nonce)) { nonce = String(msg.nonce); parentOrigin = event.origin; status(String(msg.message || '簽到頁無法取得 Azure 授權。'), 'err'); showRetry(); disposeRecognizer(); }
     return;
   }
   if (msg.type !== 'ANSHUN_VOICE_INIT' || msg.field !== field || !msg.nonce || !msg.token || !msg.region) return;
+  clearAuthWaitTimer();
   if (nonce && msg.nonce !== nonce) return;
   nonce = String(msg.nonce);
   parentOrigin = event.origin;
@@ -151,6 +168,7 @@ window.addEventListener('message', event => {
 if (window.opener && !window.opener.closed && expectedParentOrigin) {
   // 等待簽到頁回傳短效 Azure Token；連線完成前不顯示狀態卡，避免誤以為可以說話。
   window.opener.postMessage({type:'ANSHUN_VOICE_READY', field}, expectedParentOrigin);
+  armAuthWaitTimer();
 } else {
   revealConnectionUI();
   status('請先從安順國中簽到頁開啟語音視窗；目前未取得安全連線來源。', 'err');
@@ -164,6 +182,7 @@ $('retryBtn').addEventListener('click', () => {
     $('mic').textContent = '🔄';
     status('正在向簽到頁更新短效授權，請稍候…');
     window.opener.postMessage({type:'ANSHUN_VOICE_RETRY_REQUEST', nonce}, parentOrigin);
+    armAuthWaitTimer();
   }
 });
 $('cancelBtn').addEventListener('click', () => {
