@@ -19,7 +19,7 @@
 <div class="state" id="connectionState" hidden><div class="mic" id="mic">🎙️</div><div class="stateText" id="stateText">已連線，可以開始說話</div></div>
 <div class="status" id="status" aria-live="polite" hidden></div>
 <div class="actions"><button id="retryBtn" class="btn primary" hidden>重新辨識</button><button id="cancelBtn" class="btn" type="button">取消／關閉</button></div>
-<div class="hint">本頁使用 Microsoft Azure AI Speech（繁體中文臺灣 zh-TW）。辨識完成後會自動回填到簽到頁；音訊傳送至 Microsoft Azure 處理，請在安靜環境一次清楚說出姓名及職稱，例如「黃偉哲，臺南市長」。</div>
+<div class="hint">本頁使用 Microsoft Azure AI Speech（繁體中文臺灣 zh-TW）。辨識完成後會自動回填姓名；簽到頁會依正式名冊自動帶入所屬單位。請在安靜環境只說出姓名，例如「黃偉哲」。</div>
 </section></main>
 <script>
 (() => {
@@ -38,7 +38,7 @@ let started = false;
 let finished = false;
 let lastInit = null;
 $('desc').textContent = field === 'both'
-  ? '請一次說出姓名及職稱，例如「黃偉哲，臺南市長」。自然停頓後會自動分欄填入。'
+  ? '請只說出姓名，例如「黃偉哲」。自然停頓後會自動送回簽到頁，由正式名冊帶入所屬單位。'
   : '本次辨識欄位：' + label + '。說完並自然停頓後，文字會自動送回簽到頁。';
 
 function revealConnectionUI() { $('connectionState').hidden = false; }
@@ -80,7 +80,7 @@ function startAzureRecognition(init) {
   $('retryBtn').hidden = true;
   $('mic').textContent = '🎙️';
   $('stateText').textContent = '已連線，可以開始說話';
-  status(field === 'both' ? '已取得簽到頁授權，請直接說出姓名及職稱；若詢問麥克風權限，請選「允許」。' : '已取得簽到頁授權，請直接說話；若詢問麥克風權限，請選「允許」。');
+  status(field === 'both' ? '已取得簽到頁授權，請只說出姓名；若詢問麥克風權限，請選「允許」。' : '已取得簽到頁授權，請只說出姓名；若詢問麥克風權限，請選「允許」。');
   try {
     const sdk = window.SpeechSDK;
     const speechConfig = sdk.SpeechConfig.fromAuthorizationToken(init.token, init.region);
