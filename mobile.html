@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手</title>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/@zxing/browser@0.2.1/umd/index.min.js"></script>
 <style>
 :root{--navy:#17324d;--blue:#245b86;--green:#16734a;--red:#b42318;--muted:#64748b;--line:#dbe3ea}
 *{box-sizing:border-box}body{margin:0;background:#f3f6f9;color:#172b45;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;padding:14px}
@@ -60,35 +60,108 @@ function bytesToBase64(bytes){let b='';for(let i=0;i<bytes.length;i++)b+=String.
 function extractId(raw){const m=String(raw||'').normalize('NFKC').toUpperCase().match(/[A-Z][12]\d{8}/);return m?m[0]:'';}
 function validId(id){const map={A:10,B:11,C:12,D:13,E:14,F:15,G:16,H:17,I:34,J:18,K:19,L:20,M:21,N:22,O:35,P:23,Q:24,R:25,S:26,T:27,U:28,V:29,W:32,X:30,Y:31,Z:33};if(!/^[A-Z][12]\d{8}$/.test(id)||!map[id[0]])return false;const n=map[id[0]],digits=[Math.floor(n/10),n%10,...id.slice(1).split('').map(Number)],weights=[1,9,8,7,6,5,4,3,2,1,1];return digits.reduce((s,d,i)=>s+d*weights[i],0)%10===0;}
 async function encryptId(id){if(!crypto?.subtle)throw new Error('手機瀏覽器不支援安全加密。');const iv=crypto.getRandomValues(new Uint8Array(12)),key=await crypto.subtle.importKey('raw',hexToBytes(keyHex),{name:'AES-GCM'},false,['encrypt']),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(id));return{iv:Array.from(iv,b=>b.toString(16).padStart(2,'0')).join(''),ciphertext:bytesToBase64(new Uint8Array(cipher))};}
-async function stopCamera(){if(scanDiagTimer){clearInterval(scanDiagTimer);scanDiagTimer=null;}if(scannerRunning&&scanner){try{await scanner.stop();}catch(e){}scannerRunning=false;}try{if(scanner)await scanner.clear();}catch(e){}}
+async function stopCamera(){
+ if(scanner){
+  try{if(typeof scanner.stop==='function')await scanner.stop();}catch(e){}
+  scanner=null;
+ }
+ const video=$('reader').querySelector('video');
+ if(video&&video.srcObject){
+  try{video.srcObject.getTracks().forEach(track=>track.stop());}catch(e){}
+  video.srcObject=null;
+ }
+ scannerRunning=false;
+ if(scanDiagTimer){clearInterval(scanDiagTimer);scanDiagTimer=null;}
+}
 async function startCamera(){
- if(!window.Html5Qrcode||!window.Html5QrcodeSupportedFormats){status('掃描元件載入失敗，請確認網路可載入 html5-qrcode 後重新整理。','bad');return;}
+ if(!window.ZXingBrowser||!ZXingBrowser.BrowserMultiFormatReader){
+  status('ZXing 解碼元件載入失敗。請確認網路連線後重新整理頁面。','bad');return;
+ }
  if(scannerRunning)await stopCamera();
- // V1.6.1183：明確使用 ZXing 解碼，不走瀏覽器原生 BarcodeDetector；指定身分證常見一維條碼格式。
- // 不設定 qrbox，維持全畫面掃描；以 ideal 解析度要求高畫質，裝置不支援時由瀏覽器回退。
- const F=Html5QrcodeSupportedFormats;
- const formats=[F.CODE_39,F.CODE_128,F.CODE_93,F.CODABAR,F.ITF,F.PDF_417].filter(x=>x!==undefined);
- scanner=new Html5Qrcode('reader',{verbose:false,formatsToSupport:formats,useBarCodeDetectorIfSupported:false});
- decodeCount=0;scanStartedAt=0;
+ const video=document.createElement('video');
+ video.setAttribute('playsinline','true');
+ video.setAttribute('autoplay','true');
+ video.muted=true;
+ video.style.width='100%';
+ video.style.height='auto';
+ video.style.maxHeight='58vh';
+ video.style.objectFit='contain';
+ $('reader').replaceChildren(video);
  try{
-  await scanner.start(
-   {facingMode:'environment'},
-   {fps:15,disableFlip:false,videoConstraints:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}},
-   onScan,
-   ()=>{ /* 單一影格未解碼屬正常情況；避免把錯誤訊息刷滿畫面。 */ }
-  );
-  scannerRunning=true;scanBusy=false;scanStartedAt=Date.now();$('scanStart').hidden=true;$('scanNext').hidden=true;
-  const v=$('reader').querySelector('video');const w=v?.videoWidth||0,h=v?.videoHeight||0;
-  status(`相機已啟動（${w}×${h}），ZXing 一維條碼解碼器已啟用。請讓條碼橫向完整入鏡、靠近鏡頭並保持穩定。`,'good');
+  // 直接使用 ZXing Browser，不再經過 html5-qrcode 的解碼封裝。
+  const formats=[
+   ZXingBrowser.BarcodeFormat.PDF_417,
+   ZXingBrowser.BarcodeFormat.CODE_39,
+   ZXingBrowser.BarcodeFormat.CODE_128,
+   ZXingBrowser.BarcodeFormat.CODE_93,
+   ZXingBrowser.BarcodeFormat.CODABAR,
+   ZXingBrowser.BarcodeFormat.ITF
+  ].filter(x=>x!==undefined);
+  const hints=new Map();
+  if(ZXingBrowser.DecodeHintType&&ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS){
+   hints.set(ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS,formats);
+  }
+  const reader=new ZXingBrowser.BrowserMultiFormatReader(hints);
+  scanner=reader;
+  decodeCount=0;scanStartedAt=Date.now();
+  const constraints={
+   audio:false,
+   video:{
+    facingMode:{ideal:'environment'},
+    width:{ideal:1920},
+    height:{ideal:1080}
+   }
+  };
+  const controls=await reader.decodeFromConstraints(constraints,video,(result,error)=>{
+   if(!scannerRunning)return;
+   if(result){
+    const raw=typeof result.getText==='function'?result.getText():String(result.text||'');
+    onScan(raw,result);
+   }else if(error){
+    const name=String(error.name||'');
+    if(name&&name!=='NotFoundException'&&name!=='ChecksumException'&&name!=='FormatException'){
+     console.warn('ZXing decode diagnostic:',error);
+    }
+   }
+  });
+  scanner=controls;
+  scannerRunning=true;scanBusy=false;scanStartedAt=Date.now();
+  $('scanStart').hidden=true;$('scanNext').hidden=true;
+  const w=video.videoWidth||0,h=video.videoHeight||0;
+  status(`相機已啟動（${w}×${h}），已直接使用 ZXing 解碼器。請讓身分證背面條碼完整入鏡、橫向對準並保持穩定。`,'good');
   scanDiagTimer=setInterval(()=>{
    if(!scannerRunning)return;
-   const video=$('reader').querySelector('video');const vw=video?.videoWidth||0,vh=video?.videoHeight||0,sec=Math.floor((Date.now()-scanStartedAt)/1000);
-   if(decodeCount===0&&sec>=10&&sec%10===0)status(`影像串流正常（${vw}×${vh}），ZXing 已持續掃描 ${sec} 秒，尚未成功解碼。請確認條碼完整、清晰、無反光；可將身分證移近或稍微轉動角度。`,'bad');
+   const vw=video.videoWidth||0,vh=video.videoHeight||0,sec=Math.floor((Date.now()-scanStartedAt)/1000);
+   if(decodeCount===0&&sec>=10&&sec%10===0){
+    status(`影像串流正常（${vw}×${vh}），ZXing 已掃描 ${sec} 秒，尚未成功讀取。請確認條碼完整、清晰、無反光，並嘗試移近或調整角度。`,'bad');
+   }
   },1000);
- }catch(e){status('相機啟動失敗：'+(e.message||e)+'。請允許相機權限並使用 HTTPS。','bad');}
+ }catch(e){
+  await stopCamera();
+  status('相機／ZXing 啟動失敗：'+(e.message||e)+'。請確認相機權限及 HTTPS 連線。','bad');
+ }
 }
-async function onScan(raw,decodedResult){if(scanBusy)return;decodeCount++;const id=extractId(raw);if(!id||!validId(id)){status(`已讀取到條碼，但內容不符合身分證格式（辨識長度 ${String(raw||'').length}）。請勿截圖或傳送完整條碼內容，請調整角度再試。`,'bad');return;}scanBusy=true;try{const encrypted=await encryptId(id);submitFields({mode:'phoneScanSubmit',iv:encrypted.iv,ciphertext:encrypted.ciphertext});status('已辨識並加密傳送身分證資料。請查看電腦主畫面確認簽到結果。','good');await stopCamera();$('scanNext').hidden=false;$('scanStart').hidden=true;}catch(e){scanBusy=false;status('加密或傳送失敗：'+(e.message||e),'bad');}}
-$('scanStart').onclick=startCamera;$('scanNext').onclick=startCamera;$('scanStop').onclick=async()=>{await stopCamera();scanBusy=true;$('scanStart').hidden=false;$('scanNext').hidden=true;status('已結束相機掃描。');};
+async function onScan(raw,decodedResult){
+ if(scanBusy)return;
+ decodeCount++;
+ const id=extractId(raw);
+ if(!id||!validId(id)){
+  status(`已讀取到條碼，但內容不符合身分證格式（辨識長度 ${String(raw||'').length}）。請調整角度再試；不要截圖或傳送完整條碼內容。`,'bad');
+  return;
+ }
+ scanBusy=true;
+ try{
+  const encrypted=await encryptId(id);
+  submitFields({mode:'phoneScanSubmit',iv:encrypted.iv,ciphertext:encrypted.ciphertext});
+  status('已辨識並加密傳送身分證資料。請查看電腦主畫面確認簽到結果。','good');
+  await stopCamera();
+  $('scanNext').hidden=false;$('scanStart').hidden=true;
+ }catch(e){
+  scanBusy=false;
+  status('加密或傳送失敗：'+(e.message||e),'bad');
+ }
+}
+$('scanStart').onclick=startCamera;$('scanNext').onclick=()=>{scanBusy=false;startCamera();};$('scanStop').onclick=async()=>{await stopCamera();scanBusy=true;$('scanStart').hidden=false;$('scanNext').hidden=true;status('已結束相機掃描。');};
 if(!validParams()){['voiceStart','scanStart'].forEach(id=>$(id).disabled=true);status('配對資訊無效或已過期，請回到電腦重新產生 QR Code。','bad');}else if(!navigator.mediaDevices?.getUserMedia){$('scanStart').disabled=true;status('此瀏覽器不支援相機存取；仍可嘗試語音模式。','bad');}else status('已完成電腦配對。請選擇語音簽到或身分證掃描。','good');
 try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}window.addEventListener('pagehide',()=>{stopCamera();stopVoice();});
 })();
