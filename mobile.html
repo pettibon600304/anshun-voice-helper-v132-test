@@ -1,4 +1,4 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1187；沿用 V1.6.1186 四方向影像解碼，修正送出訊息避免誤認為簽到完成；搭配教師人事系統 V1.6.1180、Apps Script V1.3.42。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1188；沿用 V1.6.1187 四方向解碼，新增手機 POST 伺服器收件確認；搭配教師人事系統 V1.6.1183、Apps Script V1.3.45。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -69,11 +69,48 @@ let scanner=null,scannerRunning=false,scanBusy=false,recognition=null,voiceRunni
 function status(msg,kind){$('status').textContent=msg;$('status').className=kind||'';}
 let scanStartedAt=0,scanDiagTimer=null,decodeCount=0;
 function validParams(){return /^[a-f0-9]{48}$/.test(sessionToken)&&/^[a-f0-9]{64}$/.test(keyHex)&&/^[a-f0-9]{32}$/.test(eventId)&&/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec\?/.test(relayUrl);}
-function submitFields(fields){const form=document.createElement('form');form.method='POST';form.target='relaySink';form.action=relayUrl;Object.entries({event:eventId,sessionToken,...fields}).forEach(([name,value])=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=String(value??'');form.appendChild(input);});document.body.appendChild(form);form.submit();setTimeout(()=>form.remove(),1200);}
+const pendingPostReceipts=new Map();
+function makeRequestId(){const bytes=crypto.getRandomValues(new Uint8Array(16));return Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');}
+function submitFields(fields){
+ return new Promise(resolve=>{
+  const requestId=makeRequestId();
+  const form=document.createElement('form');form.method='POST';form.target='relaySink';form.action=relayUrl;
+  Object.entries({event:eventId,sessionToken,clientRequestId:requestId,...fields}).forEach(([name,value])=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=String(value??'');form.appendChild(input);});
+  let settled=false;
+  const finish=result=>{if(settled)return;settled=true;clearTimeout(timer);pendingPostReceipts.delete(requestId);try{form.remove();}catch(ignore){}resolve(result);};
+  const timer=setTimeout(()=>finish('NO_ACK'),12000);
+  pendingPostReceipts.set(requestId,finish);
+  document.body.appendChild(form);
+  try{form.submit();}catch(error){finish('BROWSER_ERROR');}
+  status('資料已送出，正在等待 Apps Script 伺服器確認收件…','');
+ });
+}
+window.addEventListener('message',event=>{
+ const sink=$('relaySink');
+ if(!sink||event.source!==sink.contentWindow)return;
+ const data=event.data;
+ if(!data||data.type!=='ANSHUN_PHONE_UPLOAD_ACK'||typeof data.requestId!=='string')return;
+ const finish=pendingPostReceipts.get(data.requestId);
+ if(finish)finish(String(data.status||'UNKNOWN'));
+});
+function showPostReceipt(result){
+ const messages={
+  OK:['伺服器已確認收到加密資料；電腦端正在領取並比對教師身分。','good'],
+  EXPIRED:['伺服器拒收：手機配對已逾時。請回到電腦重新產生 QR Code。','bad'],
+  BUSY:['伺服器已收到請求，但上一筆資料尚未由電腦領取。請先查看電腦端結果，不要連續重掃。','bad'],
+  INVALID_PAYLOAD:['伺服器拒收：上傳欄位或加密資料格式不正確。','bad'],
+  INVALID_SESSION:['伺服器拒收：配對資料無效。請重新配對。','bad'],
+  NOT_FOUND:['伺服器收到請求，但不支援這種上傳模式。請檢查部署版本。','bad'],
+  NO_ACK:['已送出 POST，但 12 秒內沒有收到伺服器確認。這不代表已成功；請先查看電腦端狀態，不要立即重複掃描。','bad'],
+  BROWSER_ERROR:['手機瀏覽器未能送出 POST 表單。請重新開啟配對頁面後再試。','bad']
+ };
+ const item=messages[result]||['收到未辨識的伺服器回覆（'+String(result)+'）。請截圖回報。','bad'];
+ status(item[0],item[1]);
+}
 function switchMode(mode){const voice=mode==='voice';$('voicePanel').hidden=!voice;$('scanPanel').hidden=voice;$('voiceTab').classList.toggle('active',voice);$('scanTab').classList.toggle('active',!voice);if(voice&&scannerRunning)stopCamera();if(!voice&&voiceRunning)stopVoice();status(voice?'已切換至語音簽到。':'已切換至身分證掃描。');}
 $('voiceTab').onclick=()=>switchMode('voice');$('scanTab').onclick=()=>switchMode('scan');
 function startVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){status('此手機瀏覽器不支援內建語音辨識。請使用最新版 Android Chrome，或改用身分證掃描。','bad');return;}
- try{recognition=new SR();recognition.lang='zh-TW';recognition.continuous=false;recognition.interimResults=true;recognition.maxAlternatives=5;recognition.onstart=()=>{voiceRunning=true;$('voiceOrb').classList.add('live');$('voiceStart').hidden=true;$('voiceStop').hidden=false;$('recognized').textContent='正在聆聽…';status('麥克風已啟動，請說出教師姓名。','good');};recognition.onresult=e=>{let finalText='',alts=[];for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal){finalText+=r[0].transcript;for(let j=0;j<r.length;j++)alts.push(r[j].transcript);}}if(finalText.trim()){const text=finalText.trim();$('recognized').textContent='辨識結果：'+text;submitFields({mode:'phoneVoiceSubmit',voiceText:text,candidates:JSON.stringify([...new Set(alts.map(x=>String(x||'').trim()).filter(Boolean))].slice(0,5))});status('語音結果已傳回電腦，請在電腦畫面核對教師姓名及簽到狀態。','good');stopVoice();}};recognition.onerror=e=>{status('語音辨識失敗：'+(e.error||'未知錯誤')+'。請檢查麥克風權限後重試。','bad');stopVoice();};recognition.onend=()=>{voiceRunning=false;$('voiceOrb').classList.remove('live');$('voiceStart').hidden=false;$('voiceStop').hidden=true;};recognition.start();}catch(e){status('無法啟動語音辨識：'+(e.message||e),'bad');stopVoice();}}
+ try{recognition=new SR();recognition.lang='zh-TW';recognition.continuous=false;recognition.interimResults=true;recognition.maxAlternatives=5;recognition.onstart=()=>{voiceRunning=true;$('voiceOrb').classList.add('live');$('voiceStart').hidden=true;$('voiceStop').hidden=false;$('recognized').textContent='正在聆聽…';status('麥克風已啟動，請說出教師姓名。','good');};recognition.onresult=e=>{let finalText='',alts=[];for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal){finalText+=r[0].transcript;for(let j=0;j<r.length;j++)alts.push(r[j].transcript);}}if(finalText.trim()){const text=finalText.trim();$('recognized').textContent='辨識結果：'+text;submitFields({mode:'phoneVoiceSubmit',voiceText:text,candidates:JSON.stringify([...new Set(alts.map(x=>String(x||'').trim()).filter(Boolean))].slice(0,5))}).then(showPostReceipt);stopVoice();}};recognition.onerror=e=>{status('語音辨識失敗：'+(e.error||'未知錯誤')+'。請檢查麥克風權限後重試。','bad');stopVoice();};recognition.onend=()=>{voiceRunning=false;$('voiceOrb').classList.remove('live');$('voiceStart').hidden=false;$('voiceStop').hidden=true;};recognition.start();}catch(e){status('無法啟動語音辨識：'+(e.message||e),'bad');stopVoice();}}
 function stopVoice(){try{if(recognition)recognition.stop();}catch(e){}voiceRunning=false;$('voiceOrb').classList.remove('live');$('voiceStart').hidden=false;$('voiceStop').hidden=true;}
 $('voiceStart').onclick=startVoice;$('voiceStop').onclick=stopVoice;
 function hexToBytes(hex){const a=new Uint8Array(hex.length/2);for(let i=0;i<a.length;i++)a[i]=parseInt(hex.slice(i*2,i*2+2),16);return a;}
@@ -230,9 +267,9 @@ async function onScan(raw,decodedResult){
  scanBusy=true;
  try{
   const encrypted=await encryptId(id);
-  submitFields({mode:'phoneScanSubmit',iv:encrypted.iv,ciphertext:encrypted.ciphertext});
-  status('條碼辨識、格式與檢查碼驗證已完成，並已送出加密上傳請求。請等待電腦端顯示接收、身分比對及簽到結果；此訊息不代表簽到已完成。','good');
   await stopCamera();
+  const receipt=await submitFields({mode:'phoneScanSubmit',iv:encrypted.iv,ciphertext:encrypted.ciphertext});
+  showPostReceipt(receipt);
   $('scanNext').hidden=false;$('scanStart').hidden=true;
  }catch(e){
   scanBusy=false;
