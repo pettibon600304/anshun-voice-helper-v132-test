@@ -1,30 +1,54 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1188；沿用 V1.6.1187 四方向解碼，新增手機 POST 伺服器收件確認；搭配教師人事系統 V1.6.1183、Apps Script V1.3.45。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1189；修正 ZXing CDN 無逾時而永久停留載入中；保留 V1.6.1188 POST 收件確認及四方向解碼；搭配 Apps Script V1.3.45。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手</title>
 <script>
-// 固定 ZXing 0.2.1 版本；UNPKG 失敗時改由 jsDelivr 載入，兩者均使用套件宣告的 UMD 檔案。
-window.__zxingLoadPromise = new Promise((resolve, reject) => {
+// V1.6.1189：採用限時多 CDN 載入。每個 CDN 最多等待 7 秒；失敗時自動切換，
+// 全部失敗會明確顯示錯誤，不再無限停留「正在載入條碼解碼元件」。
+window.__zxingLoadPromise = null;
+function loadZXingBrowser(){
+ if(window.__zxingLoadPromise) return window.__zxingLoadPromise;
  const sources = [
-  'https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js',
-  'https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js'
+  {name:'UNPKG',url:'https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js'},
+  {name:'jsDelivr',url:'https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js'},
+  {name:'jsDelivr 備援節點',url:'https://fastly.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js'},
+  {name:'jsDelivr 第二備援節點',url:'https://gcore.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js'}
  ];
- let index = 0;
- const tryNext = () => {
-  if (index >= sources.length) { reject(new Error('ZXing 兩個 CDN 都無法載入')); return; }
-  const script = document.createElement('script');
-  script.src = sources[index++];
-  script.onload = () => {
-   if (window.ZXingBrowser && window.ZXingBrowser.BrowserMultiFormatReader) resolve(window.ZXingBrowser);
-   else tryNext();
+ const promise = new Promise((resolve,reject)=>{
+  let index=0,lastError='';
+  const tryNext=()=>{
+   if(index>=sources.length){reject(new Error('ZXing 解碼元件無法下載：UNPKG 與 jsDelivr 備援節點均連線逾時或失敗。請確認手機網路可連接外部 CDN，再按「啟動相機掃描」重試。最後錯誤：'+lastError));return;}
+   const source=sources[index++];
+   if(typeof status==='function') status('正在連線條碼解碼元件（'+source.name+'；最多 7 秒）…','');
+   const script=document.createElement('script');
+   let settled=false;
+   const timeout=setTimeout(()=>{
+    if(settled)return;settled=true;lastError=source.name+' 連線逾時';
+    script.onload=null;script.onerror=null;try{script.remove();}catch(ignore){}
+    tryNext();
+   },7000);
+   script.src=source.url;
+   script.async=true;
+   script.crossOrigin='anonymous';
+   script.onload=()=>{
+    if(settled)return;settled=true;clearTimeout(timeout);
+    if(window.ZXingBrowser&&window.ZXingBrowser.BrowserMultiFormatReader){resolve(window.ZXingBrowser);}
+    else{lastError=source.name+' 已載入，但未取得 ZXingBrowser';try{script.remove();}catch(ignore){}tryNext();}
+   };
+   script.onerror=()=>{
+    if(settled)return;settled=true;clearTimeout(timeout);lastError=source.name+' 下載失敗';
+    try{script.remove();}catch(ignore){}tryNext();
+   };
+   document.head.appendChild(script);
   };
-  script.onerror = tryNext;
-  document.head.appendChild(script);
- };
- tryNext();
-});
+  tryNext();
+ });
+ window.__zxingLoadPromise=promise;
+ promise.catch(()=>{if(window.__zxingLoadPromise===promise)window.__zxingLoadPromise=null;});
+ return promise;
+}
 </script>
 <style>
 :root{--navy:#17324d;--blue:#245b86;--green:#16734a;--red:#b42318;--muted:#64748b;--line:#dbe3ea}
@@ -203,7 +227,7 @@ async function startCamera(){
  let pendingStream=null;
  try{
   status('正在載入條碼解碼元件…','');
-  const zx=await window.__zxingLoadPromise;
+  const zx=await loadZXingBrowser();
   if(!zx||!zx.BrowserMultiFormatReader)throw new Error('ZXing 解碼元件未正確載入');
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('目前瀏覽器不支援相機存取');
   const video=document.createElement('video');
@@ -250,7 +274,7 @@ async function startCamera(){
  }catch(e){
   if(pendingStream){try{pendingStream.getTracks().forEach(track=>track.stop());}catch(ignore){}}
   await stopCamera();
-  status('相機／解碼器啟動失敗：'+(e&&e.message||e)+'。請確認 HTTPS、相機權限及網路連線。','bad');
+  status('相機／解碼器啟動失敗：'+(e&&e.message||e)+'。若是解碼元件下載失敗，請切換 Wi-Fi／行動網路後，再按啟動相機掃描重試。','bad');
  }
 }
 async function onScan(raw,decodedResult){
