@@ -1,9 +1,9 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1191；新增配對閒置 10 分鐘逾時與建立後最長 30 分鐘上限，並在伺服器回報配對失效時立即鎖定手機端按鈕；手機相機／語音使用中每 60 秒送心跳續期；保留 V1.6.1189 解碼與 V1.3.45 POST 收件確認流程。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1194；保留 V1.6.1193 相機速度調校與一維條碼辨識，整合閒置 10 分鐘／最長 30 分鐘雙重配對期限及手機心跳；支援 V1.3.49 POST 收件確認。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手</title>
+<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1194</title>
 <script>
 // V1.6.1189：採用限時多 CDN 載入。每個 CDN 最多等待 7 秒；失敗時自動切換，
 // 全部失敗會明確顯示錯誤，不再無限停留「正在載入條碼解碼元件」。
@@ -64,7 +64,7 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
 #recognized{min-height:30px;text-align:center;font-size:18px;font-weight:800;color:var(--navy);margin:10px 0}
 </style></head>
 <body><main>
-<span class="pill">同一手機介面</span><h1>教師活動簽到助手</h1>
+<span class="pill">手機二合一 V1.6.1193</span><h1>教師活動簽到助手</h1>
 <p>可切換語音辨識或身分證條碼掃描。簽到比對仍由電腦上的教師人事系統處理。</p>
 <div class="tabs"><button class="tab active" id="voiceTab" type="button">🎙️ 語音簽到</button><button class="tab" id="scanTab" type="button">▦ 身分證掃描</button></div>
 <section class="panel" id="voicePanel">
@@ -82,7 +82,7 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
  <p class="small">本頁不保存掃描照片，也不會把完整身分證號寫入活動試算表。</p>
 </section>
 <div id="status" role="status" aria-live="polite">正在檢查配對資訊…</div>
-<p class="small">語音辨識使用手機瀏覽器支援的語音服務；若瀏覽器不支援，請改用最新版 Android Chrome。配對最長 30 分鐘；連續 10 分鐘沒有操作或掃描活動會自動失效。相機掃描或語音辨識使用中會自動維持配對。</p>
+<p class="small">語音辨識使用手機瀏覽器支援的語音服務；若瀏覽器不支援，請改用最新版 Android Chrome。配對閒置 10 分鐘自動失效；手機使用中會自動延長閒置期限，但建立後最長 30 分鐘。</p>
 <iframe name="relaySink" id="relaySink" title="簽到安全傳送通道" hidden></iframe>
 </main>
 <script>
@@ -122,7 +122,7 @@ window.addEventListener('message',event=>{
 function showPostReceipt(result){
  const messages={
   OK:['伺服器已確認收到加密資料；電腦端正在領取並比對教師身分。','good'],
-  EXPIRED:['伺服器拒收：配對閒置超過 10 分鐘或已達 30 分鐘上限。請回到電腦重新產生 QR Code。','bad'],
+  EXPIRED:['伺服器拒收：手機配對閒置超過 10 分鐘或已達建立後 30 分鐘上限。請回到電腦重新產生 QR Code。','bad'],
   BUSY:['伺服器已收到請求，但上一筆資料尚未由電腦領取。請先查看電腦端結果，不要連續重掃。','bad'],
   INVALID_PAYLOAD:['伺服器拒收：上傳欄位或加密資料格式不正確。','bad'],
   INVALID_SESSION:['伺服器拒收：配對資料無效。請重新配對。','bad'],
@@ -131,12 +131,6 @@ function showPostReceipt(result){
   BROWSER_ERROR:['手機瀏覽器未能送出 POST 表單。請重新開啟配對頁面後再試。','bad']
  };
  const item=messages[result]||['收到未辨識的伺服器回覆（'+String(result)+'）。請截圖回報。','bad'];
- if(result==='EXPIRED'||result==='INVALID_SESSION'){
-  phonePairingExpired=true;
-  void stopCamera();
-  stopVoice();
-  ['scanStart','scanNext','voiceStart'].forEach(id=>{if($(id))$(id).disabled=true;});
- }
  status(item[0],item[1]);
 }
 function notePhoneActivity(){
@@ -174,138 +168,132 @@ function extractId(raw){const m=String(raw||'').normalize('NFKC').toUpperCase().
 function validId(id){const map={A:10,B:11,C:12,D:13,E:14,F:15,G:16,H:17,I:34,J:18,K:19,L:20,M:21,N:22,O:35,P:23,Q:24,R:25,S:26,T:27,U:28,V:29,W:32,X:30,Y:31,Z:33};if(!/^[A-Z][12]\d{8}$/.test(id)||!map[id[0]])return false;const n=map[id[0]],digits=[Math.floor(n/10),n%10,...id.slice(1).split('').map(Number)],weights=[1,9,8,7,6,5,4,3,2,1,1];return digits.reduce((s,d,i)=>s+d*weights[i],0)%10===0;}
 async function encryptId(id){if(!crypto?.subtle)throw new Error('手機瀏覽器不支援安全加密。');const iv=crypto.getRandomValues(new Uint8Array(12)),key=await crypto.subtle.importKey('raw',hexToBytes(keyHex),{name:'AES-GCM'},false,['encrypt']),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(id));return{iv:Array.from(iv,b=>b.toString(16).padStart(2,'0')).join(''),ciphertext:bytesToBase64(new Uint8Array(cipher))};}
 async function stopCamera(){
- const current = scanner;
- scanner = null;
- scannerRunning = false;
+ const current=scanner;
+ scanner=null;
+ scannerRunning=false;
  if(scanDiagTimer){clearInterval(scanDiagTimer);scanDiagTimer=null;}
- if(current && current.decodeTimer){clearTimeout(current.decodeTimer);current.decodeTimer=null;}
- if(current && current.stream){
-  try{current.stream.getTracks().forEach(track=>track.stop());}catch(e){}
- }
- if(current && current.video){
-  try{current.video.pause();current.video.srcObject=null;}catch(e){}
+ if(current){
+  try{if(current.controls&&typeof current.controls.stop==='function')current.controls.stop();}catch(e){}
+  try{if(current.video&&current.video.srcObject){current.video.srcObject.getTracks().forEach(track=>track.stop());}}catch(e){}
+  try{if(current.video){current.video.pause();current.video.srcObject=null;}}catch(e){}
  }
  $('reader').replaceChildren();
 }
 function makeReaderHints(zx){
- const hints = new Map();
- const formats = [
-  zx.BarcodeFormat.CODE_128, // 臺灣身分證統一編號條碼的主要候選碼制
+ const hints=new Map();
+ // 身分證統一編號使用一維條碼；優先交由專用 One-D Reader 解碼。
+ const formats=[
+  zx.BarcodeFormat.CODE_128,
   zx.BarcodeFormat.CODE_39,
   zx.BarcodeFormat.CODE_93,
   zx.BarcodeFormat.CODABAR,
   zx.BarcodeFormat.ITF,
-  zx.BarcodeFormat.PDF_417
+  zx.BarcodeFormat.EAN_13,
+  zx.BarcodeFormat.EAN_8,
+  zx.BarcodeFormat.UPC_A,
+  zx.BarcodeFormat.UPC_E
  ].filter(value=>value!==undefined);
- if(zx.DecodeHintType && zx.DecodeHintType.POSSIBLE_FORMATS){
+ if(zx.DecodeHintType&&zx.DecodeHintType.POSSIBLE_FORMATS){
   hints.set(zx.DecodeHintType.POSSIBLE_FORMATS,formats);
  }
- if(zx.DecodeHintType && zx.DecodeHintType.TRY_HARDER!==undefined){
+ // TRY_HARDER 會擴大掃描列範圍；支援旋轉的畫布來源也會額外嘗試旋轉方向。
+ if(zx.DecodeHintType&&zx.DecodeHintType.TRY_HARDER!==undefined){
   hints.set(zx.DecodeHintType.TRY_HARDER,true);
  }
- if(zx.DecodeHintType && zx.DecodeHintType.ALSO_INVERTED!==undefined){
-  hints.set(zx.DecodeHintType.ALSO_INVERTED,true);
- }
+ // 不啟用 ALSO_INVERTED：一般身分證條碼為深色條紋／淺色底，避免每次失敗都再做一次反相解碼。
  return hints;
-}
-function drawFrameAtRotation(video,canvas,ctx,degrees){
- const w=video.videoWidth,h=video.videoHeight;
- if(!w||!h)throw new Error('相機尚未提供有效影像尺寸');
- const rotated=(degrees===90||degrees===270);
- canvas.width=rotated?h:w;
- canvas.height=rotated?w:h;
- ctx.setTransform(1,0,0,1,0,0);
- ctx.clearRect(0,0,canvas.width,canvas.height);
- if(degrees===90)ctx.setTransform(0,1,-1,0,h,0);          // 順時針 90 度
- else if(degrees===180)ctx.setTransform(-1,0,0,-1,w,h);
- else if(degrees===270)ctx.setTransform(0,-1,1,0,0,w);   // 逆時針 90 度
- ctx.drawImage(video,0,0,w,h);
- ctx.setTransform(1,0,0,1,0,0);
-}
-function queueDecodeFrame(){
- if(!scannerRunning||scanBusy||!scanner)return;
- if(scanner.decodeTimer)clearTimeout(scanner.decodeTimer);
- scanner.decodeTimer=setTimeout(decodeCameraFrame,420);
-}
-function decodeCameraFrame(){
- if(!scannerRunning||scanBusy||!scanner)return;
- const current=scanner;
- if(!current.video||current.video.readyState<2||!current.video.videoWidth){queueDecodeFrame();return;}
- const angles=[0,90,180,270];
- for(const angle of angles){
-  if(!scannerRunning||scanner!==current||scanBusy)return;
-  try{
-   drawFrameAtRotation(current.video,current.canvas,current.context,angle);
-   current.attempts++;
-   const result=current.reader.decodeFromCanvas(current.canvas);
-   if(result){
-    current.lastAngle=angle;
-    const raw=typeof result.getText==='function'?result.getText():String(result.text||'');
-    void onScan(raw,result);
-    break;
-   }
-  }catch(error){
-   const name=String(error&&error.name||'');
-   if(!['NotFoundException','ChecksumException','FormatException'].includes(name)){
-    current.lastDecodeError=name||String(error||'解碼錯誤');
-   }
-  }
- }
- if(scannerRunning&&!scanBusy)queueDecodeFrame();
 }
 async function startCamera(){
  if(scannerRunning)await stopCamera();
- let pendingStream=null;
+ let current=null;
  try{
   status('正在載入條碼解碼元件…','');
   const zx=await loadZXingBrowser();
-  if(!zx||!zx.BrowserMultiFormatReader)throw new Error('ZXing 解碼元件未正確載入');
+  if(!zx)throw new Error('ZXing 解碼元件未正確載入');
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('目前瀏覽器不支援相機存取');
+
   const video=document.createElement('video');
-  video.setAttribute('playsinline','true');video.setAttribute('autoplay','true');video.muted=true;
-  video.style.width='100%';video.style.height='auto';video.style.maxHeight='58vh';video.style.objectFit='contain';video.style.background='#111';
+  video.setAttribute('playsinline','true');
+  video.setAttribute('autoplay','true');
+  video.muted=true;
+  video.style.width='100%';
+  video.style.height='auto';
+  video.style.maxHeight='58vh';
+  video.style.objectFit='contain';
+  video.style.background='#111';
   $('reader').replaceChildren(video);
-  const stream=await navigator.mediaDevices.getUserMedia({
+
+  const hints=makeReaderHints(zx);
+  // @zxing/browser 0.2.1 有一維專用 Reader；若 CDN 匯出不完整則安全退回通用 Reader。
+  const ReaderClass=typeof zx.BrowserMultiFormatOneDReader==='function'
+   ? zx.BrowserMultiFormatOneDReader
+   : zx.BrowserMultiFormatReader;
+  if(typeof ReaderClass!=='function')throw new Error('ZXing 缺少可用的一維條碼 Reader');
+  // ZXing 0.2.1 支援第二個 options 參數；原預設失敗重試間隔為 500ms。
+  // 改為 160ms，約每秒最多 6 次解碼嘗試，兼顧反應速度與手機負載。
+  const readerOptions={
+   delayBetweenScanAttempts:160,
+   delayBetweenScanSuccess:350,
+   tryPlayVideoTimeout:5000
+  };
+  const reader=new ReaderClass(hints,readerOptions);
+  current={reader,controls:null,video,attempts:0,lastInvalidAt:0,lastDecodeError:'',startedAt:Date.now()};
+  scanner=current;
+  scannerRunning=true;
+  scanBusy=false;
+  decodeCount=0;
+  scanStartedAt=Date.now();
+
+  const constraints={
    audio:false,
-   video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:24,max:30}}
+   video:{
+    facingMode:{ideal:'environment'},
+    width:{ideal:1280,max:1280},
+    height:{ideal:720,max:720},
+    frameRate:{ideal:30,max:30}
+   }
+  };
+  const controls=await reader.decodeFromConstraints(constraints,video,(result,error)=>{
+   if(!scannerRunning||scanner!==current||scanBusy)return;
+   current.attempts++;
+   decodeCount=current.attempts;
+   if(result){
+    const raw=typeof result.getText==='function'?result.getText():String(result.text||'');
+    void onScan(raw,result);
+   }else if(error){
+    const name=String(error&&error.name||'');
+    if(name&&!['NotFoundException','ChecksumException','FormatException'].includes(name)){
+     current.lastDecodeError=name;
+    }
+   }
   });
-  pendingStream=stream;
-  video.srcObject=stream;
-  await video.play();
-  if(!video.videoWidth){
-   await new Promise((resolve,reject)=>{
-    const timer=setTimeout(()=>reject(new Error('相機影像啟動逾時')),8000);
-    video.addEventListener('loadedmetadata',()=>{clearTimeout(timer);resolve();},{once:true});
-   });
-  }
-  const track=stream.getVideoTracks()[0];
-  // 支援時啟用連續自動對焦；不支援的手機不影響掃描。
+  current.controls=controls;
+  if(scanner!==current){try{controls.stop();}catch(e){}return;}
+
+  // 保留支援手機的連續自動對焦；不支援的手機不影響基本掃描。
   try{
+   const stream=video.srcObject;
+   const track=stream&&stream.getVideoTracks?stream.getVideoTracks()[0]:null;
    const caps=track&&track.getCapabilities?track.getCapabilities():{};
    if(caps.focusMode&&caps.focusMode.includes('continuous')){
     await track.applyConstraints({advanced:[{focusMode:'continuous'}]});
    }
   }catch(ignore){}
-  const canvas=document.createElement('canvas');
-  const context=canvas.getContext('2d',{willReadFrequently:true});
-  if(!context)throw new Error('無法建立影像解碼畫布');
-  scanner={reader:new zx.BrowserMultiFormatReader(makeReaderHints(zx)),stream,video,canvas,context,decodeTimer:null,attempts:0,lastAngle:0,lastDecodeError:'',startedAt:Date.now(),lastInvalidAt:0};
-  scannerRunning=true;scanBusy=false;decodeCount=0;scanStartedAt=Date.now();
-  $('scanStart').hidden=true;$('scanNext').hidden=true;
-  const settings=track&&track.getSettings?track.getSettings():{};
-  status(`相機已啟動（${video.videoWidth}×${video.videoHeight}）。已啟用四方向解碼：0°／90°／180°／270°，Code 128 優先。請讓身分證背面統一編號條碼完整入鏡。`,'good');
-  queueDecodeFrame();
+  const width=video.videoWidth||0,height=video.videoHeight||0;
+  status(`相機已啟動（${width}×${height}）。速度調校模式：每次失敗後約 160ms 重新解碼，已關閉非必要反相重試。請將條碼置中、完整入鏡並保持穩定。`,'good');
   scanDiagTimer=setInterval(()=>{
-   if(!scannerRunning||!scanner)return;
-   const sec=Math.floor((Date.now()-scanner.startedAt)/1000);
+   if(!scannerRunning||scanner!==current)return;
+   const sec=Math.floor((Date.now()-current.startedAt)/1000);
    if(sec>=10&&sec%10===0){
-    status(`影像串流正常（${video.videoWidth}×${video.videoHeight}；相機 ${settings.width||video.videoWidth}×${settings.height||video.videoHeight}）。已測試四個方向，累計解碼嘗試 ${scanner.attempts} 次；目前仍未讀到有效統一編號。請將條碼置中、保持整張條碼完整，避免反光。`,'bad');
+    const size=`${video.videoWidth||0}×${video.videoHeight||0}`;
+    const extra=current.lastDecodeError?`；解碼器錯誤：${current.lastDecodeError}`:'';
+    status(`影像串流正常（${size}）；ZXing 已連續嘗試 ${current.attempts} 次，尚未讀到有效統一編號。請讓整張條碼入鏡、稍微靠近並避免反光。${extra}`,'bad');
    }
   },1000);
  }catch(e){
-  if(pendingStream){try{pendingStream.getTracks().forEach(track=>track.stop());}catch(ignore){}}
+  if(current&&current.controls){try{current.controls.stop();}catch(ignore){}}
   await stopCamera();
-  status('相機／解碼器啟動失敗：'+(e&&e.message||e)+'。若是解碼元件下載失敗，請切換 Wi-Fi／行動網路後，再按啟動相機掃描重試。','bad');
+  status('相機／解碼器啟動失敗：'+(e&&e.message||e)+'。若解碼元件下載失敗，請切換 Wi-Fi／行動網路後再試。','bad');
  }
 }
 async function onScan(raw,decodedResult){
