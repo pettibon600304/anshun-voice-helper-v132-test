@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#17324d"><title>教師活動簽到｜手機條碼掃描器</title>
+<style>
+:root{--navy:#17324d;--blue:#245b86;--green:#16734a;--red:#b42318;--muted:#64748b;--line:#dbe3ea}
+*{box-sizing:border-box}body{margin:0;background:#f3f6f9;color:#172b45;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;padding:16px}
+main{max-width:540px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 8px 28px rgba(22,42,60,.08)}
+h1{font-size:21px;margin:0 0 6px;color:var(--navy)}p{line-height:1.65;color:#475569}.pill{display:inline-block;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800;background:#e8f5ee;color:var(--green)}
+#reader{width:100%;min-height:240px;border-radius:14px;overflow:hidden;background:#111;margin:14px 0}#reader video{object-fit:cover!important}
+button{width:100%;padding:13px;border:0;border-radius:11px;background:var(--navy);color:white;font-size:16px;font-weight:750;margin-top:9px}button.secondary{background:#edf2f7;color:#263a50;border:1px solid #d8e0e9}button:disabled{opacity:.45}
+#status{padding:12px;border-radius:10px;background:#f2f6fa;color:#34465a;margin-top:12px;white-space:pre-wrap;line-height:1.55}#status.good{background:#e8f5ee;color:#17633d}#status.bad{background:#fff0ef;color:#a32119}.small{font-size:12px;color:var(--muted)}
+</style>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+<main>
+  <span class="pill">手機只作掃描器</span>
+  <h1>教師活動簽到｜身分證條碼掃描</h1>
+  <p>請使用手機後置相機，掃描臺灣國民身分證背面的統一編號條碼。掃描結果會加密傳回電腦，由電腦上的教師人事系統比對並完成簽到。</p>
+  <div id="reader"></div>
+  <button id="startBtn" type="button">啟動相機掃描</button>
+  <button id="nextBtn" type="button" class="secondary" hidden>掃描下一位教師</button>
+  <button id="stopBtn" type="button" class="secondary">結束掃描</button>
+  <div id="status" role="status" aria-live="polite">正在檢查配對資訊…</div>
+  <p class="small">本頁不提供教師名冊管理、不顯示完整身分證字號，也不保存掃描照片。完成掃描後請以電腦主畫面的比對結果為準。</p>
+  <iframe name="scanRelaySink" id="scanRelaySink" title="掃描資料加密傳送通道" hidden></iframe>
+</main>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const params=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
+const sessionToken=String(params.get('s')||'').toLowerCase();
+const keyHex=String(params.get('k')||'').toLowerCase();
+const relayUrl=String(params.get('r')||'');
+const eventId=String(params.get('e')||'').toLowerCase();
+let scanner=null,scannerRunning=false,scanBusy=false;
+function status(message,kind){const el=$('status');el.textContent=message;el.className=kind||'';}
+function hexToBytes(hex){const a=new Uint8Array(hex.length/2);for(let i=0;i<a.length;i++)a[i]=parseInt(hex.slice(i*2,i*2+2),16);return a;}
+function bytesToBase64(bytes){let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);return btoa(binary);}
+function extractId(raw){const t=String(raw||'').normalize('NFKC').toUpperCase();const m=t.match(/[A-Z][12]\d{8}/);return m?m[0]:'';}
+function validId(id){
+ const map={A:10,B:11,C:12,D:13,E:14,F:15,G:16,H:17,I:34,J:18,K:19,L:20,M:21,N:22,O:35,P:23,Q:24,R:25,S:26,T:27,U:28,V:29,W:32,X:30,Y:31,Z:33};
+ if(!/^[A-Z][12]\d{8}$/.test(id)||!map[id[0]])return false;
+ const n=map[id[0]],digits=[Math.floor(n/10),n%10,...id.slice(1).split('').map(Number)],weights=[1,9,8,7,6,5,4,3,2,1,1];
+ return digits.reduce((sum,d,i)=>sum+d*weights[i],0)%10===0;
+}
+async function encryptId(id){
+ if(!crypto?.subtle)throw new Error('此手機瀏覽器不支援安全加密，請改用最新版 Chrome 或 Safari。');
+ const rawKey=hexToBytes(keyHex),iv=crypto.getRandomValues(new Uint8Array(12));
+ const key=await crypto.subtle.importKey('raw',rawKey,{name:'AES-GCM'},false,['encrypt']);
+ const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(id));
+ return {iv:Array.from(iv,b=>b.toString(16).padStart(2,'0')).join(''),ciphertext:bytesToBase64(new Uint8Array(cipher))};
+}
+function submitEncrypted(payload){
+ const form=document.createElement('form');form.method='POST';form.target='scanRelaySink';form.action=relayUrl;
+ const fields={mode:'phoneScanSubmit',event:eventId,sessionToken:sessionToken,iv:payload.iv,ciphertext:payload.ciphertext};
+ Object.keys(fields).forEach(name=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=fields[name];form.appendChild(input);});
+ document.body.appendChild(form);form.submit();setTimeout(()=>form.remove(),1500);
+}
+async function stopCamera(){if(scannerRunning&&scanner){try{await scanner.stop();}catch(e){}scannerRunning=false;}try{if(scanner)await scanner.clear();}catch(e){}}
+async function startCamera(){
+ if(!window.Html5Qrcode){status('掃描元件載入失敗。請確認手機網路可連線，重新整理本頁再試。','bad');return;}
+ if(scannerRunning)await stopCamera();
+ const formats=[
+  Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_93,Html5QrcodeSupportedFormats.CODABAR,
+  Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.PDF_417
+ ].filter(x=>x!==undefined);
+ scanner=new Html5Qrcode('reader',{formatsToSupport:formats,verbose:false});
+ try{
+  await scanner.start({facingMode:'environment'},{fps:12,aspectRatio:1.6,qrbox:{width:Math.min(520,Math.floor(window.innerWidth*.84)),height:150}},onScanSuccess,()=>{});
+  scannerRunning=true;scanBusy=false;$('startBtn').hidden=true;$('nextBtn').hidden=true;
+  status('相機已啟動。請將身分證背面的條碼對準畫面中央。','good');
+ }catch(e){status('相機啟動失敗：'+(e&&e.message?e.message:String(e))+'。請確認已允許此網站使用相機，並使用 HTTPS 網址。','bad');}
+}
+async function onScanSuccess(decodedText){
+ if(scanBusy)return;
+ const id=extractId(decodedText);
+ if(!id){status('已讀取條碼，但內容不是身分證統一編號。請對準背面統一編號條碼，不要掃卡片流水號。','bad');return;}
+ if(!validId(id)){status('條碼格式檢查未通過，未送出。請重新對準身分證條碼。','bad');return;}
+ scanBusy=true;
+ try{
+  const encrypted=await encryptId(id);
+  // 盡量縮短明文留在手機 JavaScript 記憶體的時間；只提交密文。
+  submitEncrypted(encrypted);
+  status('已加密送出掃描結果。請看電腦主畫面確認教師姓名及簽到結果；確認完成後再掃描下一位。','good');
+  await stopCamera();$('nextBtn').hidden=false;$('startBtn').hidden=true;
+ }catch(e){status('掃描資料加密或傳送失敗：'+(e&&e.message?e.message:String(e)),'bad');scanBusy=false;}
+}
+$('startBtn').addEventListener('click',startCamera);
+$('nextBtn').addEventListener('click',startCamera);
+$('stopBtn').addEventListener('click',async()=>{await stopCamera();scanBusy=true;$('startBtn').hidden=false;$('nextBtn').hidden=true;status('已結束手機掃描。可關閉本頁；電腦端也可按「結束掃描配對」。');});
+const validParams=/^[a-f0-9]{48}$/.test(sessionToken)&&/^[a-f0-9]{64}$/.test(keyHex)&&/^[a-f0-9]{32}$/.test(eventId)&&/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec\?/.test(relayUrl);
+if(!validParams){$('startBtn').disabled=true;status('配對資訊無效或已過期。請回到電腦教師人事系統重新產生 QR Code。','bad');}
+else if(!navigator.mediaDevices?.getUserMedia){$('startBtn').disabled=true;status('此瀏覽器不支援相機存取，請使用最新版 Chrome 或 Safari。','bad');}
+else status('已完成電腦配對。按「啟動相機掃描」開始。');
+// 配對金鑰只保存在本頁記憶體；移除網址列查詢參數，降低瀏覽器歷史殘留。
+try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
+window.addEventListener('pagehide',()=>{stopCamera();});
+})();
+</script>
+</body></html>
