@@ -1,10 +1,10 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1183；強制 ZXing 一維條碼解碼、提高相機理想解析度；搭配教師人事系統 V1.6.1180、Apps Script V1.3.41。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1185；修正 ZXing UMD 正確檔名並加入 CDN 備援、提高相機理想解析度；搭配教師人事系統 V1.6.1180、Apps Script V1.3.41。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手</title>
-<script src="https://unpkg.com/@zxing/browser@0.2.1/umd/index.min.js"></script>
+<script src="https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js'"></script>
 <style>
 :root{--navy:#17324d;--blue:#245b86;--green:#16734a;--red:#b42318;--muted:#64748b;--line:#dbe3ea}
 *{box-sizing:border-box}body{margin:0;background:#f3f6f9;color:#172b45;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;padding:14px}
