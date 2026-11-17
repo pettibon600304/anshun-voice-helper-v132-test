@@ -1,4 +1,4 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1192；修正相機掃描核心，改用 ZXing 原生連續掃描與一維條碼專用 Reader，啟用 TRY_HARDER 旋轉嘗試；維持與 Apps Script V1.3.45 POST 收件確認流程相容。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1193；相機速度調校：降低擷取解析度、縮短 ZXing 連續解碼間隔、取消不必要反相重試；保留一維條碼 Reader、TRY_HARDER、身分證檢查碼及 V1.3.45 POST 收件確認相容。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -64,7 +64,7 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
 #recognized{min-height:30px;text-align:center;font-size:18px;font-weight:800;color:var(--navy);margin:10px 0}
 </style></head>
 <body><main>
-<span class="pill">手機二合一 V1.6.1192</span><h1>教師活動簽到助手</h1>
+<span class="pill">手機二合一 V1.6.1193</span><h1>教師活動簽到助手</h1>
 <p>可切換語音辨識或身分證條碼掃描。簽到比對仍由電腦上的教師人事系統處理。</p>
 <div class="tabs"><button class="tab active" id="voiceTab" type="button">🎙️ 語音簽到</button><button class="tab" id="scanTab" type="button">▦ 身分證掃描</button></div>
 <section class="panel" id="voicePanel">
@@ -175,9 +175,7 @@ function makeReaderHints(zx){
  if(zx.DecodeHintType&&zx.DecodeHintType.TRY_HARDER!==undefined){
   hints.set(zx.DecodeHintType.TRY_HARDER,true);
  }
- if(zx.DecodeHintType&&zx.DecodeHintType.ALSO_INVERTED!==undefined){
-  hints.set(zx.DecodeHintType.ALSO_INVERTED,true);
- }
+ // 不啟用 ALSO_INVERTED：一般身分證條碼為深色條紋／淺色底，避免每次失敗都再做一次反相解碼。
  return hints;
 }
 async function startCamera(){
@@ -206,7 +204,14 @@ async function startCamera(){
    ? zx.BrowserMultiFormatOneDReader
    : zx.BrowserMultiFormatReader;
   if(typeof ReaderClass!=='function')throw new Error('ZXing 缺少可用的一維條碼 Reader');
-  const reader=new ReaderClass(hints);
+  // ZXing 0.2.1 支援第二個 options 參數；原預設失敗重試間隔為 500ms。
+  // 改為 160ms，約每秒最多 6 次解碼嘗試，兼顧反應速度與手機負載。
+  const readerOptions={
+   delayBetweenScanAttempts:160,
+   delayBetweenScanSuccess:350,
+   tryPlayVideoTimeout:5000
+  };
+  const reader=new ReaderClass(hints,readerOptions);
   current={reader,controls:null,video,attempts:0,lastInvalidAt:0,lastDecodeError:'',startedAt:Date.now()};
   scanner=current;
   scannerRunning=true;
@@ -218,9 +223,9 @@ async function startCamera(){
    audio:false,
    video:{
     facingMode:{ideal:'environment'},
-    width:{ideal:1920},
-    height:{ideal:1080},
-    frameRate:{ideal:24,max:30}
+    width:{ideal:1280,max:1280},
+    height:{ideal:720,max:720},
+    frameRate:{ideal:30,max:30}
    }
   };
   const controls=await reader.decodeFromConstraints(constraints,video,(result,error)=>{
@@ -250,7 +255,7 @@ async function startCamera(){
    }
   }catch(ignore){}
   const width=video.videoWidth||0,height=video.videoHeight||0;
-  status(`相機已啟動（${width}×${height}）。已改用 ZXing 原生連續一維條碼辨識，並啟用 TRY_HARDER 旋轉嘗試。請讓身分證背面統一編號條碼完整入鏡。`,'good');
+  status(`相機已啟動（${width}×${height}）。速度調校模式：每次失敗後約 160ms 重新解碼，已關閉非必要反相重試。請將條碼置中、完整入鏡並保持穩定。`,'good');
   scanDiagTimer=setInterval(()=>{
    if(!scannerRunning||scanner!==current)return;
    const sec=Math.floor((Date.now()-current.startedAt)/1000);
@@ -291,7 +296,7 @@ async function onScan(raw,decodedResult){
  }
 }
 $('scanStart').onclick=startCamera;$('scanNext').onclick=()=>{scanBusy=false;startCamera();};$('scanStop').onclick=async()=>{await stopCamera();scanBusy=true;$('scanStart').hidden=false;$('scanNext').hidden=true;status('已結束相機掃描。');};
-if(!validParams()){['voiceStart','scanStart'].forEach(id=>$(id).disabled=true);status('配對資訊無效或已過期，請回到電腦重新產生 QR Code。','bad');}else if(!navigator.mediaDevices?.getUserMedia){$('scanStart').disabled=true;status('此瀏覽器不支援相機存取；仍可嘗試語音模式。','bad');}else status('已完成電腦配對。請選擇語音簽到或身分證掃描；掃描頁將以 Code 128 優先，並測試四個影像方向。','good');
+if(!validParams()){['voiceStart','scanStart'].forEach(id=>$(id).disabled=true);status('配對資訊無效或已過期，請回到電腦重新產生 QR Code。','bad');}else if(!navigator.mediaDevices?.getUserMedia){$('scanStart').disabled=true;status('此瀏覽器不支援相機存取；仍可嘗試語音模式。','bad');}else status('已完成電腦配對。請選擇語音簽到或身分證掃描；掃描頁已啟用速度調校，會優先辨識一維條碼。','good');
 try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}window.addEventListener('pagehide',()=>{stopCamera();stopVoice();});
 })();
 </script></body></html>
