@@ -1,4 +1,4 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1186；四方向影像解碼、Code 128 優先、TRY_HARDER 與掃描診斷；搭配教師人事系統 V1.6.1180、Apps Script V1.3.42。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1187；沿用 V1.6.1186 四方向影像解碼，修正送出訊息避免誤認為簽到完成；搭配教師人事系統 V1.6.1180、Apps Script V1.3.42。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -231,7 +231,7 @@ async function onScan(raw,decodedResult){
  try{
   const encrypted=await encryptId(id);
   submitFields({mode:'phoneScanSubmit',iv:encrypted.iv,ciphertext:encrypted.ciphertext});
-  status('已完成條碼辨識、格式與檢查碼驗證，並加密傳送。請查看電腦主畫面確認教師身分及簽到結果。','good');
+  status('條碼辨識、格式與檢查碼驗證已完成，並已送出加密上傳請求。請等待電腦端顯示接收、身分比對及簽到結果；此訊息不代表簽到已完成。','good');
   await stopCamera();
   $('scanNext').hidden=false;$('scanStart').hidden=true;
  }catch(e){
