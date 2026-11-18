@@ -1,9 +1,9 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1198；保留 V1.6.1198 穩定掃描流程與一維條碼辨識，整合閒置 10 分鐘／最長 30 分鐘雙重配對期限及手機心跳；支援 V1.3.49 POST 收件確認。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1199；回復曾成功辨識的 V1.6.1192 解碼核心，保留閒置 10 分鐘／最長 30 分鐘雙重配對期限及手機心跳；加強辨識進度診斷與送出狀態。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1198</title>
+<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1199</title>
 <script>
 // V1.6.1189：採用限時多 CDN 載入。每個 CDN 最多等待 7 秒；失敗時自動切換，
 // 全部失敗會明確顯示錯誤，不再無限停留「正在載入條碼解碼元件」。
@@ -64,7 +64,7 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
 #recognized{min-height:30px;text-align:center;font-size:18px;font-weight:800;color:var(--navy);margin:10px 0}
 </style></head>
 <body><main>
-<span class="pill">手機二合一 V1.6.1198</span><h1>教師活動簽到助手</h1>
+<span class="pill">手機二合一 V1.6.1199</span><h1>教師活動簽到助手</h1>
 <p>可切換語音辨識或身分證條碼掃描。簽到比對仍由電腦上的教師人事系統處理。</p>
 <div class="tabs"><button class="tab active" id="voiceTab" type="button">🎙️ 語音簽到</button><button class="tab" id="scanTab" type="button">▦ 身分證掃描</button></div>
 <section class="panel" id="voicePanel">
@@ -200,7 +200,10 @@ function makeReaderHints(zx){
  if(zx.DecodeHintType&&zx.DecodeHintType.TRY_HARDER!==undefined){
   hints.set(zx.DecodeHintType.TRY_HARDER,true);
  }
- // 不啟用 ALSO_INVERTED：一般身分證條碼為深色條紋／淺色底，避免每次失敗都再做一次反相解碼。
+ // 回復 V1.6.1192 曾成功辨識的設定：保留反相備援，避免不同手機曝光／影像處理造成條碼讀取失敗。
+ if(zx.DecodeHintType&&zx.DecodeHintType.ALSO_INVERTED!==undefined){
+  hints.set(zx.DecodeHintType.ALSO_INVERTED,true);
+ }
  return hints;
 }
 async function startCamera(){
@@ -229,14 +232,9 @@ async function startCamera(){
    ? zx.BrowserMultiFormatOneDReader
    : zx.BrowserMultiFormatReader;
   if(typeof ReaderClass!=='function')throw new Error('ZXing 缺少可用的一維條碼 Reader');
-  // ZXing 0.2.1 支援第二個 options 參數；原預設失敗重試間隔為 500ms。
-  // 改為 160ms，約每秒最多 6 次解碼嘗試，兼顧反應速度與手機負載。
-  const readerOptions={
-   delayBetweenScanAttempts:160,
-   delayBetweenScanSuccess:350,
-   tryPlayVideoTimeout:5000
-  };
-  const reader=new ReaderClass(hints,readerOptions);
+  // 使用 V1.6.1192 曾成功辨識的 ZXing 預設連續解碼節奏。
+  // 不強制縮短解碼間隔，避免手機 CPU 忙碌或逐格處理不完整。
+  const reader=new ReaderClass(hints);
   current={reader,controls:null,video,attempts:0,lastInvalidAt:0,lastDecodeError:'',startedAt:Date.now()};
   scanner=current;
   scannerRunning=true;
@@ -248,9 +246,9 @@ async function startCamera(){
    audio:false,
    video:{
     facingMode:{ideal:'environment'},
-    width:{ideal:1280,max:1280},
-    height:{ideal:720,max:720},
-    frameRate:{ideal:30,max:30}
+    width:{ideal:1920},
+    height:{ideal:1080},
+    frameRate:{ideal:24,max:30}
    }
   };
   const controls=await reader.decodeFromConstraints(constraints,video,(result,error)=>{
@@ -258,6 +256,7 @@ async function startCamera(){
    current.attempts++;
    decodeCount=current.attempts;
    if(result){
+    current.decodedResults=(current.decodedResults||0)+1;
     const raw=typeof result.getText==='function'?result.getText():String(result.text||'');
     void onScan(raw,result);
    }else if(error){
@@ -280,14 +279,20 @@ async function startCamera(){
    }
   }catch(ignore){}
   const width=video.videoWidth||0,height=video.videoHeight||0;
-  status(`相機已啟動（${width}×${height}）。速度調校模式：每次失敗後約 160ms 重新解碼，已關閉非必要反相重試。請將條碼置中、完整入鏡並保持穩定。`,'good');
+  status(`相機已啟動（${width}×${height}）。已回復原本成功辨識的連續一維條碼設定（含反相備援）。請將身分證背面條碼完整入鏡並保持穩定。`,'good');
   scanDiagTimer=setInterval(()=>{
    if(!scannerRunning||scanner!==current)return;
    const sec=Math.floor((Date.now()-current.startedAt)/1000);
    if(sec>=10&&sec%10===0){
     const size=`${video.videoWidth||0}×${video.videoHeight||0}`;
     const extra=current.lastDecodeError?`；解碼器錯誤：${current.lastDecodeError}`:'';
-    status(`影像串流正常（${size}）；ZXing 已連續嘗試 ${current.attempts} 次，尚未讀到有效統一編號。請讓整張條碼入鏡、稍微靠近並避免反光。${extra}`,'bad');
+    const decoded=Number(current.decodedResults||0);
+    const diagnosis=current.attempts===0
+      ? '目前解碼回呼尚未執行，請確認畫面是否真的在播放（不是凍結畫面）。'
+      : decoded===0
+        ? '相機有持續送影像，但尚未解出條碼。請只對準身分證背面的一維條碼，讓條碼橫向完整入鏡、避免反光。'
+        : '已讀到條碼影像但尚未通過身分證格式／檢查碼驗證；請確認掃描的是正確條碼。';
+    status(`掃描診斷（${size}）：解碼嘗試 ${current.attempts} 次、讀到條碼影像 ${decoded} 次。${diagnosis}${extra}`,'bad');
    }
   },1000);
  }catch(e){
@@ -308,9 +313,12 @@ async function onScan(raw,decodedResult){
   return;
  }
  scanBusy=true;
+ if(scanDiagTimer){clearInterval(scanDiagTimer);scanDiagTimer=null;}
+ status('已辨識到符合格式的身分證條碼，正在加密並傳送至簽到系統…','good');
  try{
   const encrypted=await encryptId(id);
   await stopCamera();
+  status('加密完成，正在等待 Apps Script 收件確認…','');
   const receipt=await submitFields({mode:'phoneScanSubmit',iv:encrypted.iv,ciphertext:encrypted.ciphertext});
   showPostReceipt(receipt);
   $('scanNext').hidden=false;$('scanStart').hidden=true;
