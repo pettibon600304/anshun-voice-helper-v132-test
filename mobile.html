@@ -1,14 +1,20 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1194；保留 V1.6.1193 相機速度調校與一維條碼辨識，整合閒置 10 分鐘／最長 30 分鐘雙重配對期限及手機心跳；支援 V1.3.49 POST 收件確認。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1197；保留 V1.6.1193 相機速度調校與一維條碼辨識，整合閒置 10 分鐘／最長 30 分鐘雙重配對期限及手機心跳；支援 V1.3.49 POST 收件確認。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1194</title>
+<meta name="theme-color" content="#17324d">
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://fastly.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://gcore.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="//unpkg.com"><link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+<title>安順國中｜手機教師活動簽到助手 V1.6.1197</title>
 <script>
 // V1.6.1189：採用限時多 CDN 載入。每個 CDN 最多等待 7 秒；失敗時自動切換，
 // 全部失敗會明確顯示錯誤，不再無限停留「正在載入條碼解碼元件」。
 window.__zxingLoadPromise = null;
-function loadZXingBrowser(){
+function loadZXingBrowser(silent=false){
  if(window.__zxingLoadPromise) return window.__zxingLoadPromise;
  const sources = [
   {name:'UNPKG',url:'https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js'},
@@ -21,7 +27,7 @@ function loadZXingBrowser(){
   const tryNext=()=>{
    if(index>=sources.length){reject(new Error('ZXing 解碼元件無法下載：UNPKG 與 jsDelivr 備援節點均連線逾時或失敗。請確認手機網路可連接外部 CDN，再按「啟動相機掃描」重試。最後錯誤：'+lastError));return;}
    const source=sources[index++];
-   if(typeof status==='function') status('正在連線條碼解碼元件（'+source.name+'；最多 7 秒）…','');
+   if(!silent&&typeof status==='function') status('正在連線條碼解碼元件（'+source.name+'；最多 7 秒）…','');
    const script=document.createElement('script');
    let settled=false;
    const timeout=setTimeout(()=>{
@@ -57,14 +63,15 @@ main{max-width:560px;margin:0 auto;background:#fff;border:1px solid var(--line);
 h1{font-size:21px;margin:0 0 5px;color:var(--navy)}p{line-height:1.6;color:#475569}.small{font-size:12px;color:var(--muted)}
 .pill{display:inline-block;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800;background:#e8f5ee;color:var(--green)}
 .tabs{display:flex;gap:8px;margin:16px 0 12px}.tab{flex:1;border:1px solid var(--line);border-radius:12px;padding:12px 8px;background:#f7f9fb;color:var(--navy);font-weight:800;font-size:15px}.tab.active{background:var(--navy);color:white;border-color:var(--navy)}
-.panel[hidden]{display:none!important}#reader{width:100%;min-height:240px;border-radius:14px;overflow:hidden;background:#111;margin:12px 0}#reader video{object-fit:contain!important;background:#111}
+.panel[hidden]{display:none!important}#reader{width:100%;min-height:240px;border-radius:14px;overflow:hidden;background:#111;margin:12px 0}#reader video{object-fit:contain!important;background:#111;touch-action:manipulation;cursor:crosshair}
+.cameraTools{display:flex;gap:9px;margin:8px 0}.toolBtn{flex:1;min-height:42px;border:1px solid #cbd5e1;border-radius:10px;background:#edf2f7;color:#17324d;font-weight:750;font-size:14px}.toolBtn:disabled{opacity:.45}
 button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var(--navy);color:white;font-size:16px;font-weight:750;margin-top:9px}button.secondary{background:#edf2f7;color:#263a50;border:1px solid #d8e0e9}button:disabled{opacity:.45}
 #status{padding:12px;border-radius:10px;background:#f2f6fa;color:#34465a;margin-top:14px;white-space:pre-wrap;line-height:1.55}#status.good{background:#e8f5ee;color:#17633d}#status.bad{background:#fff0ef;color:#a32119}
 .voiceOrb{width:112px;height:112px;border-radius:50%;background:#eaf3fc;color:#245b86;display:flex;align-items:center;justify-content:center;font-size:48px;margin:18px auto 10px}.voiceOrb.live{background:#e8f5ee;color:#16734a;box-shadow:0 0 0 8px #e8f5ee88}
 #recognized{min-height:30px;text-align:center;font-size:18px;font-weight:800;color:var(--navy);margin:10px 0}
 </style></head>
 <body><main>
-<span class="pill">手機二合一 V1.6.1193</span><h1>教師活動簽到助手</h1>
+<span class="pill">手機二合一 V1.6.1197</span><h1>教師活動簽到助手</h1>
 <p>可切換語音辨識或身分證條碼掃描。簽到比對仍由電腦上的教師人事系統處理。</p>
 <div class="tabs"><button class="tab active" id="voiceTab" type="button">🎙️ 語音簽到</button><button class="tab" id="scanTab" type="button">▦ 身分證掃描</button></div>
 <section class="panel" id="voicePanel">
@@ -76,6 +83,12 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
 <section class="panel" id="scanPanel" hidden>
  <p>請使用手機後置相機，掃描臺灣國民身分證背面的統一編號條碼。掃描資料會先在手機端加密，再傳回電腦比對。</p>
  <div id="reader"></div>
+ <p class="small" id="scanPrep" aria-live="polite">正在背景準備條碼辨識元件…</p>
+ <div class="cameraTools">
+  <button class="toolBtn" id="focusNow" type="button" disabled>◎ 重新對焦</button>
+  <button class="toolBtn" id="torchToggle" type="button" hidden>☼ 開啟補光燈</button>
+ </div>
+ <p class="small">對焦建議：先讓整條身分證條碼完整入鏡，手機與證件先保持約 10–20 公分，再慢慢前後微調到條紋最清楚；避免斜拍、晃動及燈光反射。畫面模糊時可按「重新對焦」。</p>
  <button class="action" id="scanStart" type="button">啟動相機掃描</button>
  <button class="action secondary" id="scanNext" type="button" hidden>掃描下一位教師</button>
  <button class="action secondary" id="scanStop" type="button">結束相機</button>
@@ -173,11 +186,14 @@ async function stopCamera(){
  scannerRunning=false;
  if(scanDiagTimer){clearInterval(scanDiagTimer);scanDiagTimer=null;}
  if(current){
-  try{if(current.controls&&typeof current.controls.stop==='function')current.controls.stop();}catch(e){}
-  try{if(current.video&&current.video.srcObject){current.video.srcObject.getTracks().forEach(track=>track.stop());}}catch(e){}
+  try{if(current.controls&&typeof current.controls.stop==='function'){const stopped=current.controls.stop();if(stopped&&typeof stopped.then==='function')await stopped;}}catch(e){}
+  try{const stream=current.stream||(current.video&&current.video.srcObject);if(stream&&stream.getTracks)stream.getTracks().forEach(track=>{try{track.stop();}catch(ignore){}});}catch(e){}
   try{if(current.video){current.video.pause();current.video.srcObject=null;}}catch(e){}
  }
  $('reader').replaceChildren();
+ $('focusNow').disabled=true;
+ $('torchToggle').hidden=true;
+ $('torchToggle').textContent='☼ 開啟補光燈';
 }
 function makeReaderHints(zx){
  const hints=new Map();
@@ -203,13 +219,53 @@ function makeReaderHints(zx){
  // 不啟用 ALSO_INVERTED：一般身分證條碼為深色條紋／淺色底，避免每次失敗都再做一次反相解碼。
  return hints;
 }
+async function requestCameraFocus(target=scanner){
+ if(!target||!target.focusTrack||!scannerRunning||scanner!==target){status('請先啟動相機掃描。','');return;}
+ const track=target.focusTrack;
+ try{
+  const caps=track.getCapabilities?track.getCapabilities():{};
+  const modes=Array.isArray(caps.focusMode)?caps.focusMode:[];
+  if(modes.includes('single-shot')){
+   await track.applyConstraints({advanced:[{focusMode:'single-shot'}]});
+   status('已要求相機立即重新對焦，請保持手機穩定 1–2 秒…','good');
+   setTimeout(()=>{
+    if(scanner!==target||!scannerRunning)return;
+    if(modes.includes('continuous'))track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});
+   },1200);
+  }else if(modes.includes('continuous')){
+   await track.applyConstraints({advanced:[{focusMode:'continuous'}]});
+   status('已重新要求連續自動對焦。請稍微前後移動證件，找到最清楚的位置。','good');
+  }else{
+   // Re-applying empty basic constraints can prompt some camera stacks to refresh AF without changing settings.
+   const settings=track.getSettings?track.getSettings():{};
+   const retry={};
+   if(settings.width)retry.width={ideal:settings.width};
+   if(settings.height)retry.height={ideal:settings.height};
+   if(Object.keys(retry).length)await track.applyConstraints(retry);
+   status('此手機未提供瀏覽器可控制的對焦模式。請將證件稍微前後移動，等條碼線條最清楚時再保持穩定。','');
+  }
+ }catch(e){status('相機未提供手動對焦控制，請稍微前後移動證件，等畫面清楚後再掃描。','');}
+}
+async function toggleCameraTorch(){
+ const target=scanner;
+ if(!target||!target.focusTrack||!scannerRunning)return;
+ const track=target.focusTrack;
+ try{
+  const caps=track.getCapabilities?track.getCapabilities():{};
+  if(!caps.torch){status('這支手機的瀏覽器沒有提供補光燈控制。','');return;}
+  target.torchOn=!target.torchOn;
+  await track.applyConstraints({advanced:[{torch:target.torchOn}]});
+  $('torchToggle').textContent=target.torchOn?'☼ 關閉補光燈':'☼ 開啟補光燈';
+  status(target.torchOn?'已開啟補光燈。若條碼表面反光，請關閉補光燈。':'已關閉補光燈。','good');
+ }catch(e){target.torchOn=false;$('torchToggle').textContent='☼ 開啟補光燈';status('目前相機不允許控制補光燈。','');}
+}
+$('focusNow').onclick=()=>requestCameraFocus();
+$('torchToggle').onclick=toggleCameraTorch;
 async function startCamera(){
  if(scannerRunning)await stopCamera();
- let current=null;
+ let current=null,stream=null;
  try{
-  status('正在載入條碼解碼元件…','');
-  const zx=await loadZXingBrowser();
-  if(!zx)throw new Error('ZXing 解碼元件未正確載入');
+  status('正在啟動後置相機，並同步準備條碼辨識…','');
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('目前瀏覽器不支援相機存取');
 
   const video=document.createElement('video');
@@ -223,37 +279,95 @@ async function startCamera(){
   video.style.background='#111';
   $('reader').replaceChildren(video);
 
-  const hints=makeReaderHints(zx);
-  // @zxing/browser 0.2.1 有一維專用 Reader；若 CDN 匯出不完整則安全退回通用 Reader。
-  const ReaderClass=typeof zx.BrowserMultiFormatOneDReader==='function'
-   ? zx.BrowserMultiFormatOneDReader
-   : zx.BrowserMultiFormatReader;
-  if(typeof ReaderClass!=='function')throw new Error('ZXing 缺少可用的一維條碼 Reader');
-  // ZXing 0.2.1 支援第二個 options 參數；原預設失敗重試間隔為 500ms。
-  // 改為 160ms，約每秒最多 6 次解碼嘗試，兼顧反應速度與手機負載。
-  const readerOptions={
-   delayBetweenScanAttempts:160,
-   delayBetweenScanSuccess:350,
-   tryPlayVideoTimeout:5000
-  };
-  const reader=new ReaderClass(hints,readerOptions);
-  current={reader,controls:null,video,attempts:0,lastInvalidAt:0,lastDecodeError:'',startedAt:Date.now()};
-  scanner=current;
-  scannerRunning=true;
-  scanBusy=false;
-  decodeCount=0;
-  scanStartedAt=Date.now();
-
   const constraints={
    audio:false,
    video:{
     facingMode:{ideal:'environment'},
     width:{ideal:1280,max:1280},
     height:{ideal:720,max:720},
-    frameRate:{ideal:30,max:30}
+    frameRate:{ideal:30,max:30},
+    // Optional advanced constraint: browsers/devices without continuous AF may ignore it.
+    advanced:[{focusMode:'continuous'}]
    }
   };
-  const controls=await reader.decodeFromConstraints(constraints,video,(result,error)=>{
+
+  // Start camera acquisition and decoder/CDN loading at the same time.
+  const cameraPromise=(async()=>{
+   try{return await navigator.mediaDevices.getUserMedia(constraints);}
+   catch(firstError){
+    // Older browsers may reject the optional focusMode constraint; retry without it.
+    const fallback={audio:false,video:{...constraints.video}};
+    delete fallback.video.advanced;
+    return await navigator.mediaDevices.getUserMedia(fallback);
+   }
+  })();
+  const [zxResult,cameraResult]=await Promise.allSettled([loadZXingBrowser(),cameraPromise]);
+  if(cameraResult.status==='fulfilled')stream=cameraResult.value;
+  if(zxResult.status==='rejected'){
+   if(stream)stream.getTracks().forEach(track=>track.stop());
+   throw zxResult.reason||new Error('ZXing 解碼元件未正確載入');
+  }
+  if(cameraResult.status==='rejected')throw cameraResult.reason||new Error('無法啟動相機');
+  const zx=zxResult.value;
+  if(!zx)throw new Error('ZXing 解碼元件未正確載入');
+
+  const track=stream.getVideoTracks?stream.getVideoTracks()[0]:null;
+  let focusLabel='相機自動對焦';
+  let zoomLabel='標準畫面';
+  if(track){
+   try{
+    const caps=track.getCapabilities?track.getCapabilities():{};
+    const modes=Array.isArray(caps.focusMode)?caps.focusMode:[];
+    if(modes.includes('continuous')){
+     await track.applyConstraints({advanced:[{focusMode:'continuous'}]});
+     focusLabel='連續自動對焦已啟用';
+    }else if(modes.includes('single-shot')){
+     await track.applyConstraints({advanced:[{focusMode:'single-shot'}]});
+     focusLabel='單次自動對焦已啟用';
+    }
+   }catch(ignore){}
+   // 不自動套用數位變焦：部分手機的數位放大會把失焦一起放大，反而降低條碼細節。
+   // 保持原生 1x 取景，讓相機先完成自動對焦。
+  }
+
+  const hints=makeReaderHints(zx);
+  const ReaderClass=typeof zx.BrowserMultiFormatOneDReader==='function'
+   ? zx.BrowserMultiFormatOneDReader
+   : zx.BrowserMultiFormatReader;
+  if(typeof ReaderClass!=='function')throw new Error('ZXing 缺少可用的一維條碼 Reader');
+  const readerOptions={delayBetweenScanAttempts:160,delayBetweenScanSuccess:350,tryPlayVideoTimeout:5000};
+  const reader=new ReaderClass(hints,readerOptions);
+  current={reader,controls:null,stream,focusTrack:track,video,attempts:0,lastInvalidAt:0,lastDecodeError:'',startedAt:Date.now(),focusLabel,zoomLabel,torchOn:false,resolutionBoosted:false};
+  scanner=current;
+  scannerRunning=true;
+  $('focusNow').disabled=false;
+  const focusCaps=track&&track.getCapabilities?track.getCapabilities():{};
+  $('torchToggle').hidden=!Boolean(focusCaps&&focusCaps.torch);
+  $('torchToggle').textContent='☼ 開啟補光燈';
+  scanBusy=false;
+  decodeCount=0;
+  scanStartedAt=Date.now();
+
+  // Tapping the video asks supported cameras to refocus; return to continuous AF afterwards.
+  video.addEventListener('click',async()=>{
+   if(!scannerRunning||scanner!==current||!track)return;
+   try{
+    const caps=track.getCapabilities?track.getCapabilities():{};
+    const modes=Array.isArray(caps.focusMode)?caps.focusMode:[];
+    if(modes.includes('single-shot')){
+     await track.applyConstraints({advanced:[{focusMode:'single-shot'}]});
+     status('已要求相機重新對焦，請保持手機穩定…','good');
+     setTimeout(()=>{if(scanner===current&&scannerRunning&&modes.includes('continuous'))track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});},1100);
+    }else if(modes.includes('continuous')){
+     await track.applyConstraints({advanced:[{focusMode:'continuous'}]});
+     status('已重新啟用連續自動對焦，請保持手機穩定…','good');
+    }else{
+     status('這支手機未提供手動重新對焦控制；請稍微前後移動證件，讓相機重新對焦。','');
+    }
+   }catch(ignore){status('相機正在自動對焦，請稍微前後移動證件並保持穩定。','');}
+  },{passive:true});
+
+  const controls=await reader.decodeFromStream(stream,video,(result,error)=>{
    if(!scannerRunning||scanner!==current||scanBusy)return;
    current.attempts++;
    decodeCount=current.attempts;
@@ -262,66 +376,46 @@ async function startCamera(){
     void onScan(raw,result);
    }else if(error){
     const name=String(error&&error.name||'');
-    if(name&&!['NotFoundException','ChecksumException','FormatException'].includes(name)){
-     current.lastDecodeError=name;
-    }
+    if(name&&!['NotFoundException','ChecksumException','FormatException'].includes(name))current.lastDecodeError=name;
    }
   });
   current.controls=controls;
   if(scanner!==current){try{controls.stop();}catch(e){}return;}
 
-  // 保留支援手機的連續自動對焦；不支援的手機不影響基本掃描。
-  try{
-   const stream=video.srcObject;
-   const track=stream&&stream.getVideoTracks?stream.getVideoTracks()[0]:null;
-   const caps=track&&track.getCapabilities?track.getCapabilities():{};
-   if(caps.focusMode&&caps.focusMode.includes('continuous')){
-    await track.applyConstraints({advanced:[{focusMode:'continuous'}]});
-   }
-  }catch(ignore){}
   const width=video.videoWidth||0,height=video.videoHeight||0;
-  status(`相機已啟動（${width}×${height}）。速度調校模式：每次失敗後約 160ms 重新解碼，已關閉非必要反相重試。請將條碼置中、完整入鏡並保持穩定。`,'good');
+  status(`相機已啟動（${width}×${height}）；${focusLabel}；原生 1x 取景。辨識間隔約 160ms。條碼請完整入鏡；畫面模糊時可輕點預覽畫面重新對焦。`,'good');
   scanDiagTimer=setInterval(()=>{
    if(!scannerRunning||scanner!==current)return;
    const sec=Math.floor((Date.now()-current.startedAt)/1000);
+   if(sec>=8&&!current.resolutionBoosted&&current.attempts>=30&&track){
+    current.resolutionBoosted=true;
+    try{
+     const caps=track.getCapabilities?track.getCapabilities():{};
+     const maxW=caps.width&&Number.isFinite(caps.width.max)?caps.width.max:0;
+     const maxH=caps.height&&Number.isFinite(caps.height.max)?caps.height.max:0;
+     if(maxW>=1600&&maxH>=900){
+      const targetW=Math.min(1920,maxW),targetH=Math.min(1080,maxH);
+      track.applyConstraints({width:{ideal:targetW},height:{ideal:targetH}}).then(()=>{
+       if(scanner===current&&scannerRunning)status(`已切換較高解析度（${video.videoWidth||targetW}×${video.videoHeight||targetH}），請保持條碼完整入鏡並稍等辨識。`,'good');
+      }).catch(()=>{});
+     }
+    }catch(ignore){}
+   }
    if(sec>=10&&sec%10===0){
     const size=`${video.videoWidth||0}×${video.videoHeight||0}`;
     const extra=current.lastDecodeError?`；解碼器錯誤：${current.lastDecodeError}`:'';
-    status(`影像串流正常（${size}）；ZXing 已連續嘗試 ${current.attempts} 次，尚未讀到有效統一編號。請讓整張條碼入鏡、稍微靠近並避免反光。${extra}`,'bad');
+    status(`影像串流正常（${size}）；ZXing 已連續嘗試 ${current.attempts} 次，尚未讀到有效統一編號。請將條碼靠近至清晰可辨、避免反光，或輕點畫面重新對焦。${extra}`,'bad');
    }
   },1000);
  }catch(e){
   if(current&&current.controls){try{current.controls.stop();}catch(ignore){}}
+  try{if(stream)stream.getTracks().forEach(track=>track.stop());}catch(ignore){}
   await stopCamera();
   status('相機／解碼器啟動失敗：'+(e&&e.message||e)+'。若解碼元件下載失敗，請切換 Wi-Fi／行動網路後再試。','bad');
  }
 }
-async function onScan(raw,decodedResult){
- if(scanBusy)return;
- const id=extractId(raw);
- if(!id||!validId(id)){
-  if(scanner&&Date.now()-scanner.lastInvalidAt>2500){
-   scanner.lastInvalidAt=Date.now();
-   const format=decodedResult&&typeof decodedResult.getBarcodeFormat==='function'?String(decodedResult.getBarcodeFormat()):'未知';
-   status(`已讀到條碼影像（格式：${format}），但內容不是有效的 10 碼統一編號；系統不會傳送這筆資料。請改對準身分證上方的統一編號條碼。`,'bad');
-  }
-  return;
- }
- scanBusy=true;
- try{
-  const encrypted=await encryptId(id);
-  await stopCamera();
-  const receipt=await submitFields({mode:'phoneScanSubmit',iv:encrypted.iv,ciphertext:encrypted.ciphertext});
-  showPostReceipt(receipt);
-  $('scanNext').hidden=false;$('scanStart').hidden=true;
- }catch(e){
-  scanBusy=false;
-  status('加密或傳送前處理失敗：'+(e.message||e),'bad');
-  queueDecodeFrame();
- }
-}
 $('scanStart').onclick=startCamera;$('scanNext').onclick=()=>{scanBusy=false;startCamera();};$('scanStop').onclick=async()=>{await stopCamera();scanBusy=true;$('scanStart').hidden=false;$('scanNext').hidden=true;status('已結束相機掃描。');};
-if(!validParams()){['voiceStart','scanStart'].forEach(id=>$(id).disabled=true);status('配對資訊無效或已過期，請回到電腦重新產生 QR Code。','bad');}else {if(!navigator.mediaDevices?.getUserMedia){$('scanStart').disabled=true;status('此瀏覽器不支援相機存取；仍可嘗試語音模式。配對最長 30 分鐘，閒置 10 分鐘自動失效。','bad');}else{status('已完成電腦配對。最長有效 30 分鐘；閒置 10 分鐘自動失效。相機掃描或語音辨識使用中會自動維持配對。','good');}phoneHeartbeatTimer=setInterval(()=>sendPhoneHeartbeat(false),60000);setTimeout(()=>sendPhoneHeartbeat(true),1000);}
+if(!validParams()){['voiceStart','scanStart'].forEach(id=>$(id).disabled=true);status('配對資訊無效或已過期，請回到電腦重新產生 QR Code。','bad');}else {if(!navigator.mediaDevices?.getUserMedia){$('scanStart').disabled=true;status('此瀏覽器不支援相機存取；仍可嘗試語音模式。配對最長 30 分鐘，閒置 10 分鐘自動失效。','bad');}else{status('已完成電腦配對。最長有效 30 分鐘；閒置 10 分鐘自動失效。相機掃描或語音辨識使用中會自動維持配對。','good');}phoneHeartbeatTimer=setInterval(()=>sendPhoneHeartbeat(false),60000);setTimeout(()=>sendPhoneHeartbeat(true),1000);setTimeout(()=>{loadZXingBrowser(true).then(()=>{const prep=$('scanPrep');if(prep)prep.textContent='條碼辨識元件已預先載入；啟動相機時可省去首次下載等待。';}).catch(()=>{const prep=$('scanPrep');if(prep)prep.textContent='條碼辨識元件尚未載入；啟動掃描時會自動重試下載。';});},250);}
 try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}window.addEventListener('pagehide',()=>{if(phoneHeartbeatTimer)clearInterval(phoneHeartbeatTimer);stopCamera();stopVoice();});
 })();
 </script></body></html>
