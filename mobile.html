@@ -1,9 +1,9 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1204；以 V1.6.1199 已成功解碼與自動送出流程為基礎，修正結束相機後無法重新啟動；保留精準瞄準框、中央條碼放大備援及自動簽到送出；保留閒置 10 分鐘／最長 30 分鐘雙重配對期限及心跳。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1205；新增「重新啟動掃描」按鈕，只停止並釋放相機串流、重新建立 ZXing Reader 與相機串流，不重新整理網頁、不清除配對或已送出的資料；保留 V1.6.1204 相機生命週期鎖、精準瞄準框、中央條碼放大備援、自動送出及雙重配對期限。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1204</title>
+<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1205</title>
 <script>
 // V1.6.1189：採用限時多 CDN 載入。每個 CDN 最多等待 7 秒；失敗時自動切換，
 // 全部失敗會明確顯示錯誤，不再無限停留「正在載入條碼解碼元件」。
@@ -70,6 +70,9 @@ h1{font-size:21px;margin:0 0 5px;color:var(--navy)}p{line-height:1.6;color:#4755
 #scanZoom{width:100%;margin:9px 0 0;accent-color:var(--blue)}
 .scan-hint{font-size:12px;color:#64748b;margin:4px 0 0;line-height:1.5}
 button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var(--navy);color:white;font-size:16px;font-weight:750;margin-top:9px}button.secondary{background:#edf2f7;color:#263a50;border:1px solid #d8e0e9}button:disabled{opacity:.45}
+.scan-utility-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:9px}
+.scan-utility-actions .action{margin-top:0}
+@media(max-width:360px){.scan-utility-actions{grid-template-columns:1fr}}
 #status{padding:12px;border-radius:10px;background:#f2f6fa;color:#34465a;margin-top:14px;white-space:pre-wrap;line-height:1.55}#status.good{background:#e8f5ee;color:#17633d}#status.bad{background:#fff0ef;color:#a32119}
 .voiceOrb{width:112px;height:112px;border-radius:50%;background:#eaf3fc;color:#245b86;display:flex;align-items:center;justify-content:center;font-size:48px;margin:18px auto 10px}.voiceOrb.live{background:#e8f5ee;color:#16734a;box-shadow:0 0 0 8px #e8f5ee88}
 #recognized{min-height:30px;text-align:center;font-size:18px;font-weight:800;color:var(--navy);margin:10px 0}
@@ -94,7 +97,10 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
  </div>
  <button class="action" id="scanStart" type="button">啟動相機掃描</button>
  <button class="action secondary" id="scanNext" type="button" hidden>掃描下一位教師</button>
- <button class="action secondary" id="scanStop" type="button">結束相機</button>
+ <div class="scan-utility-actions">
+  <button class="action secondary" id="scanRestart" type="button">↻ 重新啟動掃描</button>
+  <button class="action secondary" id="scanStop" type="button">結束相機</button>
+ </div>
  <p class="small">本頁不保存掃描照片，也不會把完整身分證號寫入活動試算表。</p>
 </section>
 <div id="status" role="status" aria-live="polite">正在檢查配對資訊…</div>
@@ -107,7 +113,8 @@ const $=id=>document.getElementById(id);const params=new URLSearchParams(String(
 const sessionToken=String(params.get('s')||'').toLowerCase(),keyHex=String(params.get('k')||'').toLowerCase(),relayUrl=String(params.get('r')||''),eventId=String(params.get('e')||'').toLowerCase();
 let scanner=null,scannerRunning=false,scanBusy=false,recognition=null,voiceRunning=false;
 // V1.6.1204：相機生命週期鎖與啟動世代，避免停止／重啟競速及沿用舊串流。
-let cameraGeneration=0,cameraOpening=false,cameraOpenPromise=null;
+// V1.6.1205：新增手動重新啟動掃描；只重建相機串流與 Reader，不重新整理頁面、不改動配對、心跳或已送出資料。
+let cameraGeneration=0,cameraOpening=false,cameraOpenPromise=null,restartInProgress=false,scanUploadPending=false;
 let phoneHeartbeatInFlight=false,phoneHeartbeatPromise=null,phonePairingExpired=false,phoneHeartbeatTimer=null,lastPhoneHeartbeatAt=0;
 function status(msg,kind){$('status').textContent=msg;$('status').className=kind||'';}
 function waitMs(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
@@ -171,7 +178,7 @@ async function sendPhoneHeartbeat(force=false){
   if(result==='EXPIRED'||result==='INVALID_SESSION'){
    phonePairingExpired=true;
    await stopCamera();stopVoice();
-   $('scanStart').disabled=true;$('scanNext').disabled=true;$('voiceStart').disabled=true;
+   $('scanStart').disabled=true;$('scanNext').disabled=true;$('scanRestart').disabled=true;$('voiceStart').disabled=true;
    status('手機配對已閒置超過 10 分鐘，或已達建立後 30 分鐘上限。請回到電腦重新產生 QR Code。','bad');
   }
  }catch(ignore){}
@@ -320,8 +327,8 @@ function makeReaderHints(zx){
  }
  return hints;
 }
-async function startCamera(){
- if(cameraOpening){status('相機正在啟動或重新整理，請稍候…','');return;}
+async function startCamera(fromRestart=false){
+ if(cameraOpening||(restartInProgress&&!fromRestart)){status('相機正在啟動或重新整理，請稍候…','');return;}
  cameraOpening=true;
  $('scanStart').disabled=true;$('scanNext').disabled=true;
  let current=null;
@@ -434,6 +441,25 @@ async function startCamera(){
   $('scanNext').disabled=false;
  }
 }
+async function restartCamera(){
+ if(restartInProgress||cameraOpening){status('相機目前正在啟動，請稍候再重新啟動。','');return;}
+ if(scanUploadPending){status('上一筆掃描資料仍在傳送，請等候伺服器回覆後再重新啟動。','bad');return;}
+ if(phonePairingExpired||!validParams()){status('手機配對已失效，請回到電腦重新產生 QR Code。','bad');return;}
+ restartInProgress=true;
+ $('scanRestart').disabled=true;$('scanStart').disabled=true;$('scanNext').disabled=true;
+ try{
+  status('正在釋放相機並重新啟動條碼辨識…','');
+  scanBusy=false;
+  await stopCamera();
+  if(phonePairingExpired)return;
+  $('scanNext').hidden=true;$('scanStart').hidden=false;
+  await startCamera(true);
+ }finally{
+  restartInProgress=false;
+  $('scanRestart').disabled=phonePairingExpired;
+ }
+}
+$('scanRestart').onclick=restartCamera;
 async function onScan(raw,decodedResult){
  // 掃描端只在格式與檢查碼通過後自動送出；HR／活動頁唯一比對成功即直接簽到，不另跳第二次確認。
  if(scanBusy)return;
@@ -446,7 +472,7 @@ async function onScan(raw,decodedResult){
   }
   return;
  }
- scanBusy=true;
+ scanBusy=true;scanUploadPending=true;
  if(scanDiagTimer){clearInterval(scanDiagTimer);scanDiagTimer=null;}
  status('已辨識到符合格式的身分證條碼，正在加密並自動送出；教師比對唯一成功後會直接簽到，不再要求第二次確認…','good');
  try{
@@ -458,12 +484,15 @@ async function onScan(raw,decodedResult){
   $('scanNext').hidden=false;$('scanStart').hidden=true;
  }catch(e){
   scanBusy=false;
-  status('加密或傳送前處理失敗：'+(e.message||e)+'。請按「掃描下一位教師」重新啟動相機。','bad');
+  status('加密或傳送前處理失敗：'+(e.message||e)+'。請按「重新啟動掃描」或「掃描下一位教師」。','bad');
   $('scanNext').hidden=false;$('scanStart').hidden=true;
+ }finally{
+  scanUploadPending=false;
+  $('scanRestart').disabled=phonePairingExpired;
  }
 }
 $('scanStart').onclick=()=>{scanBusy=false;$('scanNext').hidden=true;$('scanStart').hidden=false;return startCamera();};$('scanNext').onclick=()=>{scanBusy=false;$('scanNext').hidden=true;$('scanStart').hidden=false;return startCamera();};$('scanStop').onclick=async()=>{if(!scanner&&!scannerRunning){scanBusy=true;$('scanStart').disabled=false;$('scanStart').hidden=false;$('scanNext').hidden=true;status('相機目前已停止，可以重新啟動。');return;}$('scanStop').disabled=true;scanBusy=true;await stopCamera();scanBusy=true;$('scanStart').disabled=false;$('scanStart').hidden=false;$('scanNext').disabled=false;$('scanNext').hidden=true;$('scanStop').disabled=false;status('已完整釋放相機，可以再次按「啟動相機掃描」。','good');};
-if(!validParams()){['voiceStart','scanStart'].forEach(id=>$(id).disabled=true);status('配對資訊無效或已過期，請回到電腦重新產生 QR Code。','bad');}else {if(!navigator.mediaDevices?.getUserMedia){$('scanStart').disabled=true;status('此瀏覽器不支援相機存取；仍可嘗試語音模式。配對最長 30 分鐘，閒置 10 分鐘自動失效。','bad');}else{status('已完成電腦配對。最長有效 30 分鐘；閒置 10 分鐘自動失效。相機掃描或語音辨識使用中會自動維持配對。','good');}phoneHeartbeatTimer=setInterval(()=>sendPhoneHeartbeat(false),60000);setTimeout(()=>sendPhoneHeartbeat(true),1000);}
+if(!validParams()){['voiceStart','scanStart','scanRestart'].forEach(id=>$(id).disabled=true);status('配對資訊無效或已過期，請回到電腦重新產生 QR Code。','bad');}else {if(!navigator.mediaDevices?.getUserMedia){$('scanStart').disabled=true;$('scanRestart').disabled=true;status('此瀏覽器不支援相機存取；仍可嘗試語音模式。配對最長 30 分鐘，閒置 10 分鐘自動失效。','bad');}else{status('已完成電腦配對。最長有效 30 分鐘；閒置 10 分鐘自動失效。相機掃描或語音辨識使用中會自動維持配對。','good');}phoneHeartbeatTimer=setInterval(()=>sendPhoneHeartbeat(false),60000);setTimeout(()=>sendPhoneHeartbeat(true),1000);}
 try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}window.addEventListener('pagehide',()=>{if(phoneHeartbeatTimer)clearInterval(phoneHeartbeatTimer);stopCamera();stopVoice();});
 })();
 </script></body></html>
