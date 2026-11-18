@@ -1,9 +1,9 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1202；以 V1.6.1199 已成功解碼與自動送出流程為基礎，修正結束相機後無法重新啟動；保留精準瞄準框、中央條碼放大備援及自動簽到送出；保留閒置 10 分鐘／最長 30 分鐘雙重配對期限及心跳。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1203；以 V1.6.1199 已成功解碼與自動送出流程為基礎，保留相機結束後重新啟動修正；恢復較寬取景框及較大中央解碼備援區；保留自動簽到送出及閒置 10 分鐘／最長 30 分鐘配對期限。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1202</title>
+<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1203</title>
 <script>
 // V1.6.1189：採用限時多 CDN 載入。每個 CDN 最多等待 7 秒；失敗時自動切換，
 // 全部失敗會明確顯示錯誤，不再無限停留「正在載入條碼解碼元件」。
@@ -59,9 +59,9 @@ h1{font-size:21px;margin:0 0 5px;color:var(--navy)}p{line-height:1.6;color:#4755
 .tabs{display:flex;gap:8px;margin:16px 0 12px}.tab{flex:1;border:1px solid var(--line);border-radius:12px;padding:12px 8px;background:#f7f9fb;color:var(--navy);font-weight:800;font-size:15px}.tab.active{background:var(--navy);color:white;border-color:var(--navy)}
 .panel[hidden]{display:none!important}#reader{width:100%;min-height:240px;border-radius:14px;overflow:hidden;background:#111;margin:12px 0}#reader{position:relative;isolation:isolate}
 #reader video{object-fit:contain!important;background:#111}
-.scan-guide{position:absolute;z-index:2;left:18%;right:18%;top:40%;height:20%;border:2px solid rgba(55,211,153,.98);border-radius:9px;box-shadow:0 0 0 9999px rgba(0,0,0,.16);pointer-events:none}
-.scan-guide:before{content:"將條碼置於較小框線內";position:absolute;left:50%;top:-30px;transform:translateX(-50%);white-space:nowrap;background:rgba(12,31,49,.88);color:#fff;font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px}
-.scan-guide:after{content:"";position:absolute;left:50%;top:50%;width:34px;height:2px;background:rgba(255,255,255,.72);transform:translate(-50%,-50%);box-shadow:0 -5px 0 rgba(255,255,255,.28),0 5px 0 rgba(255,255,255,.28)}
+.scan-guide{position:absolute;z-index:2;left:7%;right:7%;top:38%;height:24%;border:2px solid rgba(55,211,153,.95);border-radius:10px;box-shadow:0 0 0 9999px rgba(0,0,0,.10);pointer-events:none}
+.scan-guide:before{content:"將身分證條碼完整放入框內";position:absolute;left:50%;top:-30px;transform:translateX(-50%);white-space:nowrap;background:rgba(12,31,49,.88);color:#fff;font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px}
+.scan-guide:after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;border:2px solid #fff;border-radius:50%;transform:translate(-50%,-50%);opacity:.55}
 #scanZoomPanel{background:#f2f6fa;border:1px solid var(--line);padding:10px 12px;border-radius:10px;margin:10px 0}
 #scanZoomPanel[hidden]{display:none!important}
 .scan-zoom-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px;font-weight:750}
@@ -73,7 +73,7 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
 #recognized{min-height:30px;text-align:center;font-size:18px;font-weight:800;color:var(--navy);margin:10px 0}
 </style></head>
 <body><main>
-<span class="pill">手機二合一 V1.6.1202</span><h1>教師活動簽到助手</h1>
+<span class="pill">手機二合一 V1.6.1203</span><h1>教師活動簽到助手</h1>
 <p>可切換語音辨識或身分證條碼掃描。簽到比對仍由電腦上的教師人事系統處理。</p>
 <div class="tabs"><button class="tab active" id="voiceTab" type="button">🎙️ 語音簽到</button><button class="tab" id="scanTab" type="button">▦ 身分證掃描</button></div>
 <section class="panel" id="voicePanel">
@@ -88,7 +88,7 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
  <div id="scanZoomPanel" hidden>
   <div class="scan-zoom-row"><label for="scanZoom">相機取景縮放</label><strong id="scanZoomLabel">1.0×</strong></div>
   <input id="scanZoom" type="range" min="1" max="2" step="0.1" value="1">
-  <p class="scan-hint">此控制僅在手機相機支援硬體縮放時顯示。建議從 1.0× 開始；條碼太小再微調至 1.2×，務必讓整條條碼留在框內。</p>
+  <p class="scan-hint">此控制僅在手機相機支援硬體縮放時顯示。可先使用 1.0×；條碼太小再微調至 1.2×～1.5×，請保持整條條碼完整入鏡。</p>
  </div>
  <button class="action" id="scanStart" type="button">啟動相機掃描</button>
  <button class="action secondary" id="scanNext" type="button" hidden>掃描下一位教師</button>
@@ -104,7 +104,7 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
 const $=id=>document.getElementById(id);const params=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
 const sessionToken=String(params.get('s')||'').toLowerCase(),keyHex=String(params.get('k')||'').toLowerCase(),relayUrl=String(params.get('r')||''),eventId=String(params.get('e')||'').toLowerCase();
 let scanner=null,scannerRunning=false,scanBusy=false,recognition=null,voiceRunning=false;
-// V1.6.1202：相機生命週期鎖與啟動世代，避免停止／重啟競速及沿用舊串流。
+// V1.6.1203：相機生命週期鎖與啟動世代，避免停止／重啟競速及沿用舊串流。
 let cameraGeneration=0,cameraOpening=false,cameraOpenPromise=null;
 let phoneHeartbeatInFlight=false,phoneHeartbeatPromise=null,phonePairingExpired=false,phoneHeartbeatTimer=null,lastPhoneHeartbeatAt=0;
 function status(msg,kind){$('status').textContent=msg;$('status').className=kind||'';}
@@ -264,9 +264,10 @@ function runRoiFallback(current,readerClass,hints){
  roiFallbackBusy=true;roiFallbackAttempts++;
  try{
   const video=current.video,w=video.videoWidth,h=video.videoHeight;
-  // 依縮小後的瞄準框擷取中央條碼區，留少量邊界容錯；原生 ZXing 仍持續掃描全畫面。
-  const sx=Math.round(w*0.12),sy=Math.round(h*0.36),sw=Math.max(1,Math.round(w*0.76)),sh=Math.max(1,Math.round(h*0.28));
-  const scale=Math.min(1.75,2600/sw,1200/sh);
+  // 恢復較寬鬆的中央區域備援：全寬 94%、中央 62% 高度；原生 ZXing 仍持續掃描全畫面。
+  // 不把解碼範圍限制在畫面瞄準框內，避免使用者稍微偏移就漏掃。
+  const sx=Math.round(w*0.03),sy=Math.round(h*0.19),sw=Math.max(1,Math.round(w*0.94)),sh=Math.max(1,Math.round(h*0.62));
+  const scale=Math.min(1.55,2400/sw,1400/sh);
   const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(sw*scale));canvas.height=Math.max(1,Math.round(sh*scale));
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   if(!ctx)throw new Error('無法建立條碼影像備援畫布');
@@ -423,4 +424,40 @@ async function startCamera(){
   status('相機／解碼器啟動失敗：'+(e&&e.message||e)+'。請先按「結束相機」釋放鏡頭，再重新啟動；如仍失敗，請關閉手機瀏覽器頁面後重開。','bad');
  }finally{
   cameraOpening=false;
-  $('s
+  $('scanStart').disabled=!!scannerRunning;
+  $('scanNext').disabled=false;
+ }
+}
+async function onScan(raw,decodedResult){
+ // 掃描端只在格式與檢查碼通過後自動送出；HR／活動頁唯一比對成功即直接簽到，不另跳第二次確認。
+ if(scanBusy)return;
+ const id=extractId(raw);
+ if(!id||!validId(id)){
+  if(scanner&&Date.now()-scanner.lastInvalidAt>2500){
+   scanner.lastInvalidAt=Date.now();
+   const format=decodedResult&&typeof decodedResult.getBarcodeFormat==='function'?String(decodedResult.getBarcodeFormat()):'未知';
+   status(`已讀到條碼影像（格式：${format}），但內容不是有效的 10 碼統一編號；系統不會傳送這筆資料。請改對準身分證上方的統一編號條碼。`,'bad');
+  }
+  return;
+ }
+ scanBusy=true;
+ if(scanDiagTimer){clearInterval(scanDiagTimer);scanDiagTimer=null;}
+ status('已辨識到符合格式的身分證條碼，正在加密並自動送出；教師比對唯一成功後會直接簽到，不再要求第二次確認…','good');
+ try{
+  const encrypted=await encryptId(id);
+  await stopCamera();
+  status('加密完成，正在等待 Apps Script 收件確認…','');
+  const receipt=await submitFields({mode:'phoneScanSubmit',iv:encrypted.iv,ciphertext:encrypted.ciphertext});
+  showPostReceipt(receipt);
+  $('scanNext').hidden=false;$('scanStart').hidden=true;
+ }catch(e){
+  scanBusy=false;
+  status('加密或傳送前處理失敗：'+(e.message||e)+'。請按「掃描下一位教師」重新啟動相機。','bad');
+  $('scanNext').hidden=false;$('scanStart').hidden=true;
+ }
+}
+$('scanStart').onclick=()=>{scanBusy=false;$('scanNext').hidden=true;$('scanStart').hidden=false;return startCamera();};$('scanNext').onclick=()=>{scanBusy=false;$('scanNext').hidden=true;$('scanStart').hidden=false;return startCamera();};$('scanStop').onclick=async()=>{if(!scanner&&!scannerRunning){scanBusy=true;$('scanStart').disabled=false;$('scanStart').hidden=false;$('scanNext').hidden=true;status('相機目前已停止，可以重新啟動。');return;}$('scanStop').disabled=true;scanBusy=true;await stopCamera();scanBusy=true;$('scanStart').disabled=false;$('scanStart').hidden=false;$('scanNext').disabled=false;$('scanNext').hidden=true;$('scanStop').disabled=false;status('已完整釋放相機，可以再次按「啟動相機掃描」。','good');};
+if(!validParams()){['voiceStart','scanStart'].forEach(id=>$(id).disabled=true);status('配對資訊無效或已過期，請回到電腦重新產生 QR Code。','bad');}else {if(!navigator.mediaDevices?.getUserMedia){$('scanStart').disabled=true;status('此瀏覽器不支援相機存取；仍可嘗試語音模式。配對最長 30 分鐘，閒置 10 分鐘自動失效。','bad');}else{status('已完成電腦配對。最長有效 30 分鐘；閒置 10 分鐘自動失效。相機掃描或語音辨識使用中會自動維持配對。','good');}phoneHeartbeatTimer=setInterval(()=>sendPhoneHeartbeat(false),60000);setTimeout(()=>sendPhoneHeartbeat(true),1000);}
+try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}window.addEventListener('pagehide',()=>{if(phoneHeartbeatTimer)clearInterval(phoneHeartbeatTimer);stopCamera();stopVoice();});
+})();
+</script></body></html>
