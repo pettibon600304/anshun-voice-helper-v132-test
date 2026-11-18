@@ -1,9 +1,9 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1200；以 V1.6.1199 已成功解碼與自動送出流程為基礎，新增中央條碼區域放大備援、支援手機硬體縮放及取景引導；保留閒置 10 分鐘／最長 30 分鐘雙重配對期限及心跳。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1201；以 V1.6.1199 已成功解碼與自動送出流程為基礎，新增中央條碼區域放大備援、支援手機硬體縮放及取景引導；保留閒置 10 分鐘／最長 30 分鐘雙重配對期限及心跳。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1200</title>
+<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1201</title>
 <script>
 // V1.6.1189：採用限時多 CDN 載入。每個 CDN 最多等待 7 秒；失敗時自動切換，
 // 全部失敗會明確顯示錯誤，不再無限停留「正在載入條碼解碼元件」。
@@ -59,9 +59,9 @@ h1{font-size:21px;margin:0 0 5px;color:var(--navy)}p{line-height:1.6;color:#4755
 .tabs{display:flex;gap:8px;margin:16px 0 12px}.tab{flex:1;border:1px solid var(--line);border-radius:12px;padding:12px 8px;background:#f7f9fb;color:var(--navy);font-weight:800;font-size:15px}.tab.active{background:var(--navy);color:white;border-color:var(--navy)}
 .panel[hidden]{display:none!important}#reader{width:100%;min-height:240px;border-radius:14px;overflow:hidden;background:#111;margin:12px 0}#reader{position:relative;isolation:isolate}
 #reader video{object-fit:contain!important;background:#111}
-.scan-guide{position:absolute;z-index:2;left:7%;right:7%;top:38%;height:24%;border:2px solid rgba(55,211,153,.95);border-radius:10px;box-shadow:0 0 0 9999px rgba(0,0,0,.10);pointer-events:none}
-.scan-guide:before{content:"將身分證條碼完整放入框內";position:absolute;left:50%;top:-30px;transform:translateX(-50%);white-space:nowrap;background:rgba(12,31,49,.88);color:#fff;font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px}
-.scan-guide:after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;border:2px solid #fff;border-radius:50%;transform:translate(-50%,-50%);opacity:.55}
+.scan-guide{position:absolute;z-index:2;left:18%;right:18%;top:40%;height:20%;border:2px solid rgba(55,211,153,.98);border-radius:9px;box-shadow:0 0 0 9999px rgba(0,0,0,.16);pointer-events:none}
+.scan-guide:before{content:"將條碼置於較小框線內";position:absolute;left:50%;top:-30px;transform:translateX(-50%);white-space:nowrap;background:rgba(12,31,49,.88);color:#fff;font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px}
+.scan-guide:after{content:"";position:absolute;left:50%;top:50%;width:34px;height:2px;background:rgba(255,255,255,.72);transform:translate(-50%,-50%);box-shadow:0 -5px 0 rgba(255,255,255,.28),0 5px 0 rgba(255,255,255,.28)}
 #scanZoomPanel{background:#f2f6fa;border:1px solid var(--line);padding:10px 12px;border-radius:10px;margin:10px 0}
 #scanZoomPanel[hidden]{display:none!important}
 .scan-zoom-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px;font-weight:750}
@@ -73,7 +73,7 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
 #recognized{min-height:30px;text-align:center;font-size:18px;font-weight:800;color:var(--navy);margin:10px 0}
 </style></head>
 <body><main>
-<span class="pill">手機二合一 V1.6.1200</span><h1>教師活動簽到助手</h1>
+<span class="pill">手機二合一 V1.6.1201</span><h1>教師活動簽到助手</h1>
 <p>可切換語音辨識或身分證條碼掃描。簽到比對仍由電腦上的教師人事系統處理。</p>
 <div class="tabs"><button class="tab active" id="voiceTab" type="button">🎙️ 語音簽到</button><button class="tab" id="scanTab" type="button">▦ 身分證掃描</button></div>
 <section class="panel" id="voicePanel">
@@ -88,7 +88,7 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
  <div id="scanZoomPanel" hidden>
   <div class="scan-zoom-row"><label for="scanZoom">相機取景縮放</label><strong id="scanZoomLabel">1.0×</strong></div>
   <input id="scanZoom" type="range" min="1" max="2" step="0.1" value="1">
-  <p class="scan-hint">此控制僅在手機相機支援硬體縮放時顯示。建議先用 1.2×～1.5×，讓條碼完整入框；若條碼超出框線，請調回 1.0×。</p>
+  <p class="scan-hint">此控制僅在手機相機支援硬體縮放時顯示。建議從 1.0× 開始；條碼太小再微調至 1.2×，務必讓整條條碼留在框內。</p>
  </div>
  <button class="action" id="scanStart" type="button">啟動相機掃描</button>
  <button class="action secondary" id="scanNext" type="button" hidden>掃描下一位教師</button>
@@ -244,9 +244,9 @@ function runRoiFallback(current,readerClass,hints){
  roiFallbackBusy=true;roiFallbackAttempts++;
  try{
   const video=current.video,w=video.videoWidth,h=video.videoHeight;
-  // 全寬中央 62% 高度做溫和放大，避免僅掃固定小框而漏掉偏上／偏下的條碼。
-  const sx=Math.round(w*0.03),sy=Math.round(h*0.19),sw=Math.max(1,Math.round(w*0.94)),sh=Math.max(1,Math.round(h*0.62));
-  const scale=Math.min(1.55,2400/sw,1400/sh);
+  // 依縮小後的瞄準框擷取中央條碼區，留少量邊界容錯；原生 ZXing 仍持續掃描全畫面。
+  const sx=Math.round(w*0.12),sy=Math.round(h*0.36),sw=Math.max(1,Math.round(w*0.76)),sh=Math.max(1,Math.round(h*0.28));
+  const scale=Math.min(1.75,2600/sw,1200/sh);
   const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(sw*scale));canvas.height=Math.max(1,Math.round(sh*scale));
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   if(!ctx)throw new Error('無法建立條碼影像備援畫布');
@@ -366,7 +366,7 @@ async function startCamera(){
   let cameraQuality={zoom:false,focus:false};
   try{const stream=video.srcObject;const track=stream&&stream.getVideoTracks?stream.getVideoTracks()[0]:null;cameraQuality=await applyCameraQuality(track);}catch(ignore){}
   const width=video.videoWidth||0,height=video.videoHeight||0;
-  status(`相機已啟動（${width}×${height}）。已啟用裝置支援的連續對焦與曝光；${cameraQuality.zoom?'已提供輕度相機縮放':'此手機未提供硬體縮放控制'}。請讓條碼完整放入綠色框線，辨識核心與自動送出保持不變。`,'good');
+  status(`相機已啟動（${width}×${height}）。已啟用裝置支援的連續對焦與曝光；${cameraQuality.zoom?'已提供輕度相機縮放':'此手機未提供硬體縮放控制'}。請讓整條條碼放入較小的綠色框線；全畫面備援掃描及自動送出保持不變。`,'good');
   // 低頻中央條碼區放大備援：不取代 ZXing 原生連續掃描，也不處理／保存原始照片。
   if(typeof reader.decodeFromCanvas==='function'){
    roiFallbackTimer=setInterval(()=>runRoiFallback(current,ReaderClass,hints),1300);
