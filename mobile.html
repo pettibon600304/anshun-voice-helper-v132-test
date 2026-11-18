@@ -1,9 +1,9 @@
-<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1201；以 V1.6.1199 已成功解碼與自動送出流程為基礎，新增中央條碼區域放大備援、支援手機硬體縮放及取景引導；保留閒置 10 分鐘／最長 30 分鐘雙重配對期限及心跳。 -->
+<!-- 安順國中教師活動簽到手機二合一頁面 V1.6.1202；以 V1.6.1199 已成功解碼與自動送出流程為基礎，修正結束相機後無法重新啟動；保留精準瞄準框、中央條碼放大備援及自動簽到送出；保留閒置 10 分鐘／最長 30 分鐘雙重配對期限及心跳。 -->
 <!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1201</title>
+<meta name="theme-color" content="#17324d"><title>安順國中｜手機教師活動簽到助手 V1.6.1202</title>
 <script>
 // V1.6.1189：採用限時多 CDN 載入。每個 CDN 最多等待 7 秒；失敗時自動切換，
 // 全部失敗會明確顯示錯誤，不再無限停留「正在載入條碼解碼元件」。
@@ -73,7 +73,7 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
 #recognized{min-height:30px;text-align:center;font-size:18px;font-weight:800;color:var(--navy);margin:10px 0}
 </style></head>
 <body><main>
-<span class="pill">手機二合一 V1.6.1201</span><h1>教師活動簽到助手</h1>
+<span class="pill">手機二合一 V1.6.1202</span><h1>教師活動簽到助手</h1>
 <p>可切換語音辨識或身分證條碼掃描。簽到比對仍由電腦上的教師人事系統處理。</p>
 <div class="tabs"><button class="tab active" id="voiceTab" type="button">🎙️ 語音簽到</button><button class="tab" id="scanTab" type="button">▦ 身分證掃描</button></div>
 <section class="panel" id="voicePanel">
@@ -104,8 +104,13 @@ button.action{width:100%;padding:13px;border:0;border-radius:11px;background:var
 const $=id=>document.getElementById(id);const params=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
 const sessionToken=String(params.get('s')||'').toLowerCase(),keyHex=String(params.get('k')||'').toLowerCase(),relayUrl=String(params.get('r')||''),eventId=String(params.get('e')||'').toLowerCase();
 let scanner=null,scannerRunning=false,scanBusy=false,recognition=null,voiceRunning=false;
+// V1.6.1202：相機生命週期鎖與啟動世代，避免停止／重啟競速及沿用舊串流。
+let cameraGeneration=0,cameraOpening=false,cameraOpenPromise=null;
 let phoneHeartbeatInFlight=false,phoneHeartbeatPromise=null,phonePairingExpired=false,phoneHeartbeatTimer=null,lastPhoneHeartbeatAt=0;
 function status(msg,kind){$('status').textContent=msg;$('status').className=kind||'';}
+function waitMs(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+function stopStreamTracks(stream){try{if(stream&&typeof stream.getTracks==='function')stream.getTracks().forEach(track=>{try{track.stop();}catch(ignore){}});}catch(ignore){}}
+function releaseVideoElement(video){if(!video)return;let stream=null;try{stream=video.srcObject;}catch(ignore){}stopStreamTracks(stream);try{video.pause();}catch(ignore){}try{video.srcObject=null;}catch(ignore){}try{video.removeAttribute('src');video.load();}catch(ignore){}}
 let scanStartedAt=0,scanDiagTimer=null,decodeCount=0,roiFallbackTimer=null,roiFallbackBusy=false,roiFallbackAttempts=0,activeVideoTrack=null,activeZoomRange=null;
 function validParams(){return /^[a-f0-9]{48}$/.test(sessionToken)&&/^[a-f0-9]{64}$/.test(keyHex)&&/^[a-f0-9]{32}$/.test(eventId)&&/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec\?/.test(relayUrl);}
 const pendingPostReceipts=new Map();
@@ -182,19 +187,34 @@ function extractId(raw){const m=String(raw||'').normalize('NFKC').toUpperCase().
 function validId(id){const map={A:10,B:11,C:12,D:13,E:14,F:15,G:16,H:17,I:34,J:18,K:19,L:20,M:21,N:22,O:35,P:23,Q:24,R:25,S:26,T:27,U:28,V:29,W:32,X:30,Y:31,Z:33};if(!/^[A-Z][12]\d{8}$/.test(id)||!map[id[0]])return false;const n=map[id[0]],digits=[Math.floor(n/10),n%10,...id.slice(1).split('').map(Number)],weights=[1,9,8,7,6,5,4,3,2,1,1];return digits.reduce((s,d,i)=>s+d*weights[i],0)%10===0;}
 async function encryptId(id){if(!crypto?.subtle)throw new Error('手機瀏覽器不支援安全加密。');const iv=crypto.getRandomValues(new Uint8Array(12)),key=await crypto.subtle.importKey('raw',hexToBytes(keyHex),{name:'AES-GCM'},false,['encrypt']),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(id));return{iv:Array.from(iv,b=>b.toString(16).padStart(2,'0')).join(''),ciphertext:bytesToBase64(new Uint8Array(cipher))};}
 async function stopCamera(){
+ // 先增加世代編號，讓尚未完成的舊啟動流程在回來時自動作廢。
+ cameraGeneration++;
  const current=scanner;
+ const pendingOpen=cameraOpenPromise;
  scanner=null;
  scannerRunning=false;
  if(scanDiagTimer){clearInterval(scanDiagTimer);scanDiagTimer=null;}
  if(roiFallbackTimer){clearInterval(roiFallbackTimer);roiFallbackTimer=null;}
  roiFallbackBusy=false;activeVideoTrack=null;activeZoomRange=null;
  const zoomPanel=$('scanZoomPanel');if(zoomPanel)zoomPanel.hidden=true;
+ let stream=null;
+ if(current&&current.video){try{stream=current.video.srcObject;}catch(ignore){}}
  if(current){
-  try{if(current.controls&&typeof current.controls.stop==='function')current.controls.stop();}catch(e){}
-  try{if(current.video&&current.video.srcObject){current.video.srcObject.getTracks().forEach(track=>track.stop());}}catch(e){}
-  try{if(current.video){current.video.pause();current.video.srcObject=null;}}catch(e){}
+  try{if(current.controls&&typeof current.controls.stop==='function')current.controls.stop();}catch(ignore){}
+  // 保留 track 參照，在 ZXing controls.stop() 可能清除 video.srcObject 前先取得並停止。
+  stopStreamTracks(stream);
+  releaseVideoElement(current.video);
  }
  $('reader').replaceChildren();
+ // 若使用者在相機尚未完全開啟時就按結束，等待舊開啟工作最多 2 秒；
+ // 延遲回來的 controls 也會在 startCamera() 的世代檢查中被停止。
+ if(pendingOpen){
+  try{
+   const lateControls=await Promise.race([pendingOpen.then(value=>value,()=>null),waitMs(2000).then(()=>null)]);
+   if(lateControls&&typeof lateControls.stop==='function')lateControls.stop();
+  }catch(ignore){}
+ }
+ await waitMs(350); // 給 Android Chrome 一點時間釋放後置相機硬體。
 }
 function safeRangeValue(range, value){
  const min=Number(range?.min??1),max=Number(range?.max??1),step=Number(range?.step||0.1);
@@ -299,11 +319,19 @@ function makeReaderHints(zx){
  return hints;
 }
 async function startCamera(){
- if(scannerRunning)await stopCamera();
+ if(cameraOpening){status('相機正在啟動或重新整理，請稍候…','');return;}
+ cameraOpening=true;
+ $('scanStart').disabled=true;$('scanNext').disabled=true;
  let current=null;
  try{
+  // 明確重置停止掃描留下的忙碌旗標；否則第二次啟動的首批回呼會被略過。
+  if(scannerRunning||scanner)await stopCamera();
+  scanBusy=false;
+  await waitMs(350);
+  const generation=++cameraGeneration;
   status('正在載入條碼解碼元件…','');
   const zx=await loadZXingBrowser();
+  if(generation!==cameraGeneration)return;
   if(!zx)throw new Error('ZXing 解碼元件未正確載入');
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('目前瀏覽器不支援相機存取');
 
@@ -320,13 +348,10 @@ async function startCamera(){
   createScanGuide();
 
   const hints=makeReaderHints(zx);
-  // @zxing/browser 0.2.1 有一維專用 Reader；若 CDN 匯出不完整則安全退回通用 Reader。
   const ReaderClass=typeof zx.BrowserMultiFormatOneDReader==='function'
    ? zx.BrowserMultiFormatOneDReader
    : zx.BrowserMultiFormatReader;
   if(typeof ReaderClass!=='function')throw new Error('ZXing 缺少可用的一維條碼 Reader');
-  // 使用 V1.6.1192 曾成功辨識的 ZXing 預設連續解碼節奏。
-  // 不強制縮短解碼間隔，避免手機 CPU 忙碌或逐格處理不完整。
   const reader=new ReaderClass(hints);
   current={reader,controls:null,video,attempts:0,lastInvalidAt:0,lastDecodeError:'',startedAt:Date.now()};
   scanner=current;
@@ -344,8 +369,8 @@ async function startCamera(){
     frameRate:{ideal:24,max:30}
    }
   };
-  const controls=await reader.decodeFromConstraints(constraints,video,(result,error)=>{
-   if(!scannerRunning||scanner!==current||scanBusy)return;
+  const openPromise=reader.decodeFromConstraints(constraints,video,(result,error)=>{
+   if(!scannerRunning||scanner!==current||generation!==cameraGeneration||scanBusy)return;
    current.attempts++;
    decodeCount=current.attempts;
    if(result){
@@ -354,74 +379,48 @@ async function startCamera(){
     void onScan(raw,result);
    }else if(error){
     const name=String(error&&error.name||'');
-    if(name&&!['NotFoundException','ChecksumException','FormatException'].includes(name)){
-     current.lastDecodeError=name;
-    }
+    if(name&&!['NotFoundException','ChecksumException','FormatException'].includes(name))current.lastDecodeError=name;
    }
   });
+  cameraOpenPromise=openPromise;
+  let controls;
+  try{controls=await openPromise;}finally{if(cameraOpenPromise===openPromise)cameraOpenPromise=null;}
   current.controls=controls;
-  if(scanner!==current){try{controls.stop();}catch(e){}return;}
+  if(generation!==cameraGeneration||scanner!==current||!scannerRunning){
+   try{if(controls&&typeof controls.stop==='function')controls.stop();}catch(ignore){}
+   releaseVideoElement(video);
+   return;
+  }
+  // 確認影片確實播放；停止後重新啟動時，部分 Android Chrome 需要再次呼叫 play()。
+  try{await video.play();}catch(ignore){}
+  if(generation!==cameraGeneration||scanner!==current||!scannerRunning){
+   try{if(controls&&typeof controls.stop==='function')controls.stop();}catch(ignore){}
+   releaseVideoElement(video);
+   return;
+  }
 
-  // 持續對焦、曝光與白平衡只在裝置明確支援時啟用；失敗不會中止相機。
   let cameraQuality={zoom:false,focus:false};
   try{const stream=video.srcObject;const track=stream&&stream.getVideoTracks?stream.getVideoTracks()[0]:null;cameraQuality=await applyCameraQuality(track);}catch(ignore){}
   const width=video.videoWidth||0,height=video.videoHeight||0;
-  status(`相機已啟動（${width}×${height}）。已啟用裝置支援的連續對焦與曝光；${cameraQuality.zoom?'已提供輕度相機縮放':'此手機未提供硬體縮放控制'}。請讓整條條碼放入較小的綠色框線；全畫面備援掃描及自動送出保持不變。`,'good');
-  // 低頻中央條碼區放大備援：不取代 ZXing 原生連續掃描，也不處理／保存原始照片。
-  if(typeof reader.decodeFromCanvas==='function'){
-   roiFallbackTimer=setInterval(()=>runRoiFallback(current,ReaderClass,hints),1300);
-  }
+  status(`相機已啟動（${width}×${height}）。已啟用裝置支援的連續對焦與曝光；${cameraQuality.zoom?'已提供輕度相機縮放':'此手機未提供硬體縮放控制'}。請將整條條碼放入綠色框線；全畫面備援掃描及自動送出保持不變。`,'good');
+  if(typeof reader.decodeFromCanvas==='function')roiFallbackTimer=setInterval(()=>runRoiFallback(current,ReaderClass,hints),1300);
   scanDiagTimer=setInterval(()=>{
-   if(!scannerRunning||scanner!==current)return;
+   if(!scannerRunning||scanner!==current||generation!==cameraGeneration)return;
    const sec=Math.floor((Date.now()-current.startedAt)/1000);
    if(sec>=10&&sec%10===0){
     const size=`${video.videoWidth||0}×${video.videoHeight||0}`;
     const extra=current.lastDecodeError?`；解碼器錯誤：${current.lastDecodeError}`:'';
     const decoded=Number(current.decodedResults||0);
-    const diagnosis=current.attempts===0
-      ? '目前解碼回呼尚未執行，請確認畫面是否真的在播放（不是凍結畫面）。'
-      : decoded===0
-        ? '相機有持續送影像，但尚未解出條碼。請只對準身分證背面的一維條碼，讓條碼橫向完整入鏡、避免反光。'
-        : '已讀到條碼影像但尚未通過身分證格式／檢查碼驗證；請確認掃描的是正確條碼。';
+    const diagnosis=current.attempts===0?'目前解碼回呼尚未執行，請確認畫面是否真的在播放（不是凍結畫面）。':decoded===0?'相機有持續送影像，但尚未解出條碼。請只對準身分證背面的一維條碼，讓條碼橫向完整入鏡、避免反光。':'已讀到條碼影像但尚未通過身分證格式／檢查碼驗證；請確認掃描的是正確條碼。';
     status(`掃描診斷（${size}）：原生解碼 ${current.attempts} 次、讀到條碼影像 ${decoded} 次、中央放大備援 ${roiFallbackAttempts} 次。${diagnosis}${extra}`,'bad');
    }
   },1000);
  }catch(e){
-  if(current&&current.controls){try{current.controls.stop();}catch(ignore){}}
-  await stopCamera();
-  status('相機／解碼器啟動失敗：'+(e&&e.message||e)+'。若解碼元件下載失敗，請切換 Wi-Fi／行動網路後再試。','bad');
- }
-}
-async function onScan(raw,decodedResult){
- // 掃描端只在格式與檢查碼通過後自動送出；HR／活動頁唯一比對成功即直接簽到，不另跳第二次確認。
- if(scanBusy)return;
- const id=extractId(raw);
- if(!id||!validId(id)){
-  if(scanner&&Date.now()-scanner.lastInvalidAt>2500){
-   scanner.lastInvalidAt=Date.now();
-   const format=decodedResult&&typeof decodedResult.getBarcodeFormat==='function'?String(decodedResult.getBarcodeFormat()):'未知';
-   status(`已讀到條碼影像（格式：${format}），但內容不是有效的 10 碼統一編號；系統不會傳送這筆資料。請改對準身分證上方的統一編號條碼。`,'bad');
+  if(current){
+   if(scanner===current)await stopCamera();
+   else{try{if(current.controls&&typeof current.controls.stop==='function')current.controls.stop();}catch(ignore){}releaseVideoElement(current.video);}
   }
-  return;
- }
- scanBusy=true;
- if(scanDiagTimer){clearInterval(scanDiagTimer);scanDiagTimer=null;}
- status('已辨識到符合格式的身分證條碼，正在加密並自動送出；教師比對唯一成功後會直接簽到，不再要求第二次確認…','good');
- try{
-  const encrypted=await encryptId(id);
-  await stopCamera();
-  status('加密完成，正在等待 Apps Script 收件確認…','');
-  const receipt=await submitFields({mode:'phoneScanSubmit',iv:encrypted.iv,ciphertext:encrypted.ciphertext});
-  showPostReceipt(receipt);
-  $('scanNext').hidden=false;$('scanStart').hidden=true;
- }catch(e){
-  scanBusy=false;
-  status('加密或傳送前處理失敗：'+(e.message||e)+'。請按「掃描下一位教師」重新啟動相機。','bad');
-  $('scanNext').hidden=false;$('scanStart').hidden=true;
- }
-}
-$('scanStart').onclick=startCamera;$('scanNext').onclick=()=>{scanBusy=false;startCamera();};$('scanStop').onclick=async()=>{await stopCamera();scanBusy=true;$('scanStart').hidden=false;$('scanNext').hidden=true;status('已結束相機掃描。');};
-if(!validParams()){['voiceStart','scanStart'].forEach(id=>$(id).disabled=true);status('配對資訊無效或已過期，請回到電腦重新產生 QR Code。','bad');}else {if(!navigator.mediaDevices?.getUserMedia){$('scanStart').disabled=true;status('此瀏覽器不支援相機存取；仍可嘗試語音模式。配對最長 30 分鐘，閒置 10 分鐘自動失效。','bad');}else{status('已完成電腦配對。最長有效 30 分鐘；閒置 10 分鐘自動失效。相機掃描或語音辨識使用中會自動維持配對。','good');}phoneHeartbeatTimer=setInterval(()=>sendPhoneHeartbeat(false),60000);setTimeout(()=>sendPhoneHeartbeat(true),1000);}
-try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}window.addEventListener('pagehide',()=>{if(phoneHeartbeatTimer)clearInterval(phoneHeartbeatTimer);stopCamera();stopVoice();});
-})();
-</script></body></html>
+  status('相機／解碼器啟動失敗：'+(e&&e.message||e)+'。請先按「結束相機」釋放鏡頭，再重新啟動；如仍失敗，請關閉手機瀏覽器頁面後重開。','bad');
+ }finally{
+  cameraOpening=false;
+  $('s
